@@ -85,6 +85,7 @@ STRATEGIES = [
     },
     {
         "id": "ml_5m",
+        "binance": False,
         "label": "ML Lorentz · 5m",
         "group": "v31",
         "chart_tf": "5m",
