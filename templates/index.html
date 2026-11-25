@@ -61,8 +61,14 @@
     <div class="actions">
       <button type="submit" id="run">Run</button>
       <button type="button" id="start-sweep" class="btn-start" title="Analyze every strategy and coin across Pivex and Binance">Start</button>
+      <button type="button" id="start-ranking" class="btn-rank" title="Rank each strategy by its best symbol on 38 Binance USDT-M pairs and the known Pivex crypto list">Rank</button>
     </div>
   </form>
+
+  <nav class="tabs" role="tablist" aria-label="Tester views">
+    <button type="button" class="tab active" id="tab-single" role="tab" aria-selected="true" aria-controls="single-pane">Single run</button>
+    <button type="button" class="tab" id="tab-ranking" role="tab" aria-selected="false" aria-controls="ranking-panel">Ranking</button>
+  </nav>
 
   {% if error %}
   <div class="banner error" role="alert">{{ error }}</div>
@@ -94,6 +100,29 @@
     <div id="sweep-report" hidden></div>
   </section>
 
+  <section class="panel ranking-panel" id="ranking-panel" hidden role="tabpanel" aria-labelledby="tab-ranking">
+    <div class="panel-head">
+      <div>
+        <h2>Strategy ranking</h2>
+        <p class="muted" id="ranking-meta">Ranks every enabled strategy on 38 Binance USDT-M symbols and the known Pivex crypto list. Each strategy uses its own native timeframe. The table shows the symbol where that strategy performed best, using the starting balance above.</p>
+      </div>
+    </div>
+
+    <div class="progress-wrap" id="ranking-progress-wrap" hidden>
+      <div class="progress-head">
+        <span id="ranking-status-text">Preparing…</span>
+        <span id="ranking-count">0 / 0</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-bar" id="ranking-progress-bar" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <div class="banner error" id="ranking-error" role="alert" hidden></div>
+    <div id="ranking-report" hidden></div>
+  </section>
+
+  <div id="single-pane" role="tabpanel" aria-labelledby="tab-single">
   {% if result %}
   <section class="panel" id="single-result">
     <div class="panel-head">
@@ -182,11 +211,12 @@
   </section>
   {% else %}
   <section class="panel empty-state" id="empty-state">
-    <h2>Run a month on one setup — or press Start for all strategies</h2>
-    <p>Pick a strategy and a symbol and press <strong>Run</strong> for a single chart + trade list, or press <strong>Start</strong> to test every enabled Pivex and Binance strategy/coin combo and generate a full report ready to paste into another AI.</p>
+    <h2>Run a month on one setup — or press Start or Rank</h2>
+    <p>Pick a strategy and a symbol and press <strong>Run</strong> for a single chart + trade list, press <strong>Start</strong> to test every enabled Pivex and Binance strategy/coin combo, or press <strong>Rank</strong> to find the symbol where each strategy performed best.</p>
     <p class="muted">Partial take-profits close part of the position. Grid unloads close only the last level. The first download of a symbol takes a little while; the next run uses the cache.</p>
   </section>
   {% endif %}
+  </div>
 
   <script id="catalog" type="application/json">{{ catalog|tojson }}</script>
   <script src="{{ url_for('static', filename='lightweight-charts.js') }}"></script>

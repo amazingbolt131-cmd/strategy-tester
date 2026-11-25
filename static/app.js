@@ -42,11 +42,13 @@
 
   const run = document.getElementById("run");
   const startBtn = document.getElementById("start-sweep");
+  const rankBtn = document.getElementById("start-ranking");
   if (run && run.form) {
     run.form.addEventListener("submit", function () {
       run.disabled = true;
       run.textContent = "Running…";
       if (startBtn) startBtn.disabled = true;
+      if (typeof rankBtn !== "undefined" && rankBtn) rankBtn.disabled = true;
     });
   }
 
@@ -392,12 +394,14 @@
           sweepProgressWrap.hidden = true;
           if (startBtn) { startBtn.disabled = false; startBtn.textContent = "Start"; }
           if (run) run.disabled = false;
+          if (rankBtn) rankBtn.disabled = false;
           renderReport(d.report, jobId);
         } else if (d.status === "error" || d.status === "cancelled") {
           clearInterval(pollTimer);
           pollTimer = null;
           if (startBtn) { startBtn.disabled = false; startBtn.textContent = "Start"; }
           if (run) run.disabled = false;
+          if (rankBtn) rankBtn.disabled = false;
           sweepError.textContent = d.error || "Sweep stopped (" + d.status + ").";
           sweepError.hidden = false;
         }
@@ -407,6 +411,7 @@
         pollTimer = null;
         if (startBtn) { startBtn.disabled = false; startBtn.textContent = "Start"; }
         if (run) run.disabled = false;
+          if (rankBtn) rankBtn.disabled = false;
         sweepError.textContent = String(err && err.message ? err.message : err);
         sweepError.hidden = false;
       });
@@ -439,6 +444,7 @@
       startBtn.disabled = true;
       startBtn.textContent = "Analyzing…";
       if (run) run.disabled = true;
+      if (rankBtn) rankBtn.disabled = true;
 
       fetch("/sweep/start", {
         method: "POST",
@@ -461,11 +467,241 @@
         .catch(function (err) {
           if (startBtn) { startBtn.disabled = false; startBtn.textContent = "Start"; }
           if (run) run.disabled = false;
+          if (rankBtn) rankBtn.disabled = false;
           sweepError.textContent = String(err && err.message ? err.message : err);
           sweepError.hidden = false;
         });
     });
   }
+
+
+  // ===== Tabs + Ranking =====
+  const tabSingle = document.getElementById("tab-single");
+  const tabRanking = document.getElementById("tab-ranking");
+  const singlePane = document.getElementById("single-pane");
+  const rankingPanel = document.getElementById("ranking-panel");
+  const rankingMeta = document.getElementById("ranking-meta");
+  const rankingProgressWrap = document.getElementById("ranking-progress-wrap");
+  const rankingStatusText = document.getElementById("ranking-status-text");
+  const rankingCount = document.getElementById("ranking-count");
+  const rankingBar = document.getElementById("ranking-progress-bar");
+  const rankingError = document.getElementById("ranking-error");
+  const rankingReportEl = document.getElementById("ranking-report");
+  let rankingTimer = null;
+
+  function showTab(name) {
+    const isRank = name === "ranking";
+    if (tabSingle) {
+      tabSingle.classList.toggle("active", !isRank);
+      tabSingle.setAttribute("aria-selected", isRank ? "false" : "true");
+    }
+    if (tabRanking) {
+      tabRanking.classList.toggle("active", isRank);
+      tabRanking.setAttribute("aria-selected", isRank ? "true" : "false");
+    }
+    if (singlePane) singlePane.hidden = isRank;
+    if (rankingPanel) rankingPanel.hidden = !isRank;
+  }
+  if (tabSingle) tabSingle.addEventListener("click", function () { showTab("single"); });
+  if (tabRanking) tabRanking.addEventListener("click", function () { showTab("ranking"); });
+
+  function setBusy(busy, rankLabel) {
+    if (rankBtn) {
+      rankBtn.disabled = busy;
+      rankBtn.textContent = busy ? (rankLabel || "Ranking…") : "Rank";
+    }
+    if (startBtn) startBtn.disabled = busy;
+    if (run) run.disabled = busy;
+  }
+
+  function renderRanking(report) {
+    const s = report.summary || {};
+    const cfg = report.settings || {};
+    const uni = report.universe || {};
+    if (rankingMeta) {
+      rankingMeta.textContent =
+        (report.window_label || "Last 30 published days") +
+        " · Starting balance $" + Number(cfg.balance || 0).toLocaleString("en-US", { maximumFractionDigits: 2 }) +
+        " · Commission " + cfg.commission + "%/side · Slippage " + cfg.slippage + "%" +
+        (cfg.daily_filter ? " · Daily HAMA filter ON" : " · Daily HAMA filter OFF") +
+        " · " + (s.strategies_ranked || 0) + " strategy rows in " + Number(s.elapsed_s || 0).toFixed(1) + "s. " +
+        (cfg.native_timeframes || "Each strategy uses its own native timeframe.");
+    }
+
+    function rowCells(r, includeTested) {
+      if (r.error || !r.stats) {
+        return "<tr><td>" + (r.rank || "") + "</td><td>" + esc(r.strategy_label) +
+          "</td><td>" + esc(r.venue_label) + "</td><td>" + esc(r.symbol_label) +
+          '</td><td colspan="16" class="neg">Error: ' + esc(r.error || "No stats") + "</td></tr>";
+      }
+      const st = r.stats;
+      const pfVal = st.profit_factor == null ? 999999 : st.profit_factor;
+      const tested = includeTested
+        ? '<td data-value="' + (r.symbols_tested || 0) + '">' + (r.completed_symbols || 0) + " / " + (r.symbols_tested || 0) + "</td>"
+        : "";
+      return "<tr>" +
+        '<td data-value="' + r.rank + '">' + r.rank + "</td>" +
+        '<td data-value="' + esc(r.strategy_label) + '">' + esc(r.strategy_label) + "</td>" +
+        '<td data-value="' + esc(r.venue_label) + '">' + esc(r.venue_label) + "</td>" +
+        '<td data-value="' + esc(r.symbol_label) + '">' + esc(r.symbol_label) + "</td>" +
+        tested +
+        '<td data-value="' + esc(r.signal_tf || "") + '" class="rank-text">' + esc(r.signal_tf || "—") + "</td>" +
+        '<td data-value="' + st.net_profit + '" class="' + tone(st.net_profit) + '">' + esc(fmtMoney(st.net_profit, true)) + "</td>" +
+        '<td data-value="' + st.net_profit_pct + '" class="' + tone(st.net_profit_pct) + '">' + esc(fmtPct(st.net_profit_pct, true)) + "</td>" +
+        '<td data-value="' + pfVal + '">' + esc(fmtPf(st.profit_factor)) + "</td>" +
+        '<td data-value="' + (-st.max_drawdown) + '" class="' + (st.max_drawdown > 0 ? "neg" : "") + '">' + esc(fmtMoney(-st.max_drawdown)) + "</td>" +
+        '<td data-value="' + st.max_drawdown_pct + '" class="' + (st.max_drawdown_pct > 0 ? "neg" : "") + '">' + Number(st.max_drawdown_pct).toFixed(2) + "%</td>" +
+        '<td data-value="' + st.win_rate + '">' + Number(st.win_rate).toFixed(2) + "%</td>" +
+        '<td data-value="' + st.total_trades + '">' + st.total_trades + "</td>" +
+        '<td data-value="' + st.avg_win + '" class="pos">' + esc(fmtMoney(st.avg_win)) + "</td>" +
+        '<td data-value="' + st.avg_loss + '" class="' + (st.avg_loss < 0 ? "neg" : "") + '">' + esc(fmtMoney(st.avg_loss)) + "</td>" +
+        '<td data-value="' + st.expectancy + '" class="' + tone(st.expectancy) + '">' + esc(fmtMoney(st.expectancy, true)) + "</td>" +
+        '<td data-value="' + (st.win_loss_ratio == null ? "" : st.win_loss_ratio) + '">' + esc(fmtRatio(st.win_loss_ratio)) + "</td>" +
+        '<td data-value="' + st.commission_paid + '">' + esc(fmtMoney(st.commission_paid)) + "</td>" +
+        '<td data-value="' + esc(r.tp || "") + '" class="rank-text">' + esc(r.tp || "—") + "</td>" +
+        '<td data-value="' + esc(r.sl || "") + '" class="rank-text">' + esc(r.sl || "—") + "</td>" +
+        '<td data-value="' + esc(r.indicators || "") + '" class="rank-text">' + esc(r.indicators || "—") + "</td>" +
+        "</tr>";
+    }
+
+    const head = "<th data-type=\"number\">#</th>" +
+      "<th data-type=\"text\">Strategy</th><th data-type=\"text\">Venue</th><th data-type=\"text\">Best symbol</th>" +
+      "<th data-type=\"number\">Symbols tested</th><th data-type=\"text\" class=\"rank-text\">Native TF</th>" +
+      "<th data-type=\"number\">Net $</th><th data-type=\"number\">Net %</th><th data-type=\"number\">PF</th>" +
+      "<th data-type=\"number\">Max DD $</th><th data-type=\"number\">Max DD %</th>" +
+      "<th data-type=\"number\">Win rate</th><th data-type=\"number\">Trades</th>" +
+      "<th data-type=\"number\">Avg win</th><th data-type=\"number\">Avg loss</th>" +
+      "<th data-type=\"number\">Expectancy</th><th data-type=\"number\">Avg R</th>" +
+      "<th data-type=\"number\">Commission</th>" +
+      "<th data-type=\"text\" class=\"rank-text\">TP</th><th data-type=\"text\" class=\"rank-text\">SL</th>" +
+      "<th data-type=\"text\" class=\"rank-text\">Indicators</th>";
+
+    let html = '<p class="muted">' + esc(uni.binance_source || "") + " " + esc(uni.pivex_note || "") +
+      " Best symbol is the highest net profit on the default 30-day window, then PF, then trade count. Click a column header to sort. Default order is PF, then net return.</p>";
+    html += '<div class="table-wrap"><table id="ranking-table" class="left-ranked"><thead><tr>' + head +
+      "</tr></thead><tbody>";
+    (report.ranked || []).forEach(function (r) { html += rowCells(r, true); });
+    html += "</tbody></table></div>";
+
+    if (report.all_results && report.all_results.length) {
+      const allHead = head.replace("Best symbol", "Symbol").replace("<th data-type=\"number\">Symbols tested</th>", "");
+      html += '<details class="rules"><summary>All ' + report.all_results.length +
+        " tested combos (not just the best symbol)</summary><div class=\"table-wrap\"><table id=\"ranking-all\" class=\"left-ranked\"><thead><tr>" +
+        allHead + "</tr></thead><tbody>";
+      (report.all_results || []).forEach(function (r, i) {
+        r.rank = r.rank || (i + 1);
+        html += rowCells(r, false);
+      });
+      html += "</tbody></table></div></details>";
+    }
+
+    rankingReportEl.innerHTML = html;
+    rankingReportEl.hidden = false;
+    makeSortable(document.getElementById("ranking-table"));
+    makeSortable(document.getElementById("ranking-all"));
+  }
+
+  function pollRanking(jobId) {
+    fetch("/ranking/" + encodeURIComponent(jobId))
+      .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+      .then(function (res) {
+        if (!res.ok) {
+          try { sessionStorage.removeItem("rankingJobId"); } catch (e) { /* noop */ }
+          throw new Error((res.data && res.data.error) || "Ranking status failed");
+        }
+        const d = res.data;
+        const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
+        if (rankingCount) rankingCount.textContent = d.done + " / " + d.total + " (" + pct + "%) · " + Number(d.elapsed_s || 0).toFixed(1) + "s";
+        if (rankingStatusText) rankingStatusText.textContent = d.current || "Running…";
+        if (rankingBar) rankingBar.style.width = pct + "%";
+        if (d.status === "done" && d.report) {
+          clearInterval(rankingTimer);
+          rankingTimer = null;
+          try { sessionStorage.removeItem("rankingJobId"); } catch (e) { /* noop */ }
+          if (rankingProgressWrap) rankingProgressWrap.hidden = true;
+          setBusy(false);
+          renderRanking(d.report);
+        } else if (d.status === "error" || d.status === "cancelled") {
+          clearInterval(rankingTimer);
+          rankingTimer = null;
+          try { sessionStorage.removeItem("rankingJobId"); } catch (e) { /* noop */ }
+          setBusy(false);
+          if (rankingError) {
+            rankingError.textContent = d.error || "Ranking stopped (" + d.status + ").";
+            rankingError.hidden = false;
+          }
+        }
+      })
+      .catch(function (err) {
+        clearInterval(rankingTimer);
+        rankingTimer = null;
+        setBusy(false);
+        if (rankingError) {
+          rankingError.textContent = String(err && err.message ? err.message : err);
+          rankingError.hidden = false;
+        }
+      });
+  }
+
+  function startRankingPoll(jobId, total) {
+    if (rankingTimer) { clearInterval(rankingTimer); rankingTimer = null; }
+    if (rankingCount) rankingCount.textContent = "0 / " + total;
+    rankingTimer = setInterval(function () { pollRanking(jobId); }, 1500);
+    pollRanking(jobId);
+  }
+
+  if (rankBtn) {
+    rankBtn.addEventListener("click", function () {
+      const form = rankBtn.form || document.querySelector("form.controls");
+      if (form && form.reportValidity && !form.reportValidity()) return;
+      showTab("ranking");
+      const balanceEl = document.getElementById("balance");
+      const commEl = document.getElementById("commission");
+      const slipEl = document.getElementById("slippage");
+      const dailyEl = document.getElementById("daily_hama");
+      if (rankingProgressWrap) rankingProgressWrap.hidden = false;
+      if (rankingReportEl) { rankingReportEl.hidden = true; rankingReportEl.innerHTML = ""; }
+      if (rankingError) { rankingError.hidden = true; rankingError.textContent = ""; }
+      if (rankingBar) rankingBar.style.width = "0%";
+      if (rankingCount) rankingCount.textContent = "0 / 308";
+      if (rankingStatusText) rankingStatusText.textContent = "Starting ranking…";
+      if (rankingMeta) rankingMeta.textContent = "Testing every enabled strategy on 38 Binance USDT-M symbols and the known Pivex crypto list. Each strategy stays on its own native timeframe. This runs in the background and can take a while the first time symbols are downloaded.";
+      setBusy(true, "Ranking…");
+      fetch("/ranking/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          balance: balanceEl ? balanceEl.value : "10000",
+          commission: commEl ? commEl.value : "0.04",
+          slippage: slipEl ? slipEl.value : "0.0",
+          daily_hama: dailyEl ? dailyEl.checked : true,
+        }),
+      })
+        .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+        .then(function (res) {
+          if (!res.ok) throw new Error((res.data && res.data.error) || "Failed to start ranking");
+          try { sessionStorage.setItem("rankingJobId", res.data.job_id); } catch (e) { /* noop */ }
+          startRankingPoll(res.data.job_id, res.data.total);
+        })
+        .catch(function (err) {
+          setBusy(false);
+          if (rankingError) {
+            rankingError.textContent = String(err && err.message ? err.message : err);
+            rankingError.hidden = false;
+          }
+        });
+    });
+  }
+
+  try {
+    const existing = sessionStorage.getItem("rankingJobId");
+    if (existing && rankingPanel) {
+      showTab("ranking");
+      if (rankingProgressWrap) rankingProgressWrap.hidden = false;
+      startRankingPoll(existing, 308);
+    }
+  } catch (e) { /* noop */ }
+
 
   const payload = document.getElementById("chart-data");
   if (!payload || typeof LightweightCharts === "undefined") return;

@@ -30,6 +30,31 @@ SYMBOLS = {
     "NEARUSDT": {"label": "NEAR", "step": 1.0},
     "SUIUSDT": {"label": "SUI", "step": 1.0},
     "WLDUSDT": {"label": "WLD", "step": 1.0},
+    # Extra tick sizes for the Ranking screen only. These are not added to
+    # CORE_SYMBOLS or per-strategy coin lists, so Run/Start dropdowns stay the same.
+    "LTCUSDT": {"label": "LTC", "step": 0.001},
+    "HYPEUSDT": {"label": "HYPE", "step": 0.01},
+    "BIGTIMEUSDT": {"label": "BIGTIME", "step": 1.0},
+    "EVAAUSDT": {"label": "EVAA", "step": 0.1},
+    "LISTAUSDT": {"label": "LISTA", "step": 1.0},
+    "BLESSUSDT": {"label": "BLESS", "step": 1.0},
+    "GUAUSDT": {"label": "GUA", "step": 1.0},
+    "MMTUSDT": {"label": "MMT", "step": 1.0},
+    "PAXGUSDT": {"label": "PAXG", "step": 0.001},
+    "MANTRAUSDT": {"label": "MANTRA", "step": 1.0},
+    "ADAUSDT": {"label": "ADA", "step": 1.0},
+    "PIEVERSEUSDT": {"label": "PIEVERSE", "step": 1.0},
+    "OPGUSDT": {"label": "OPG", "step": 1.0},
+    "BTWUSDT": {"label": "BTW", "step": 1.0},
+    "XAUTUSDT": {"label": "XAUT", "step": 0.001},
+    "TAOUSDT": {"label": "TAO", "step": 0.001},
+    "AAVEUSDT": {"label": "AAVE", "step": 0.1},
+    "AVAXUSDT": {"label": "AVAX", "step": 1.0},
+    "AIOTUSDT": {"label": "AIOT", "step": 1.0},
+    "PUMPUSDT": {"label": "PUMP", "step": 1.0},
+    "VVVUSDT": {"label": "VVV", "step": 0.01},
+    "AKEUSDT": {"label": "AKE", "step": 1.0},
+    "INJUSDT": {"label": "INJ", "step": 0.1},
 }
 
 # Always offered, then each strategy adds its live coins.
