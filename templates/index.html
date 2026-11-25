@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Futures Strategy Tester</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>Futures Strategy Tester</h1>
+        <p>USDT-M perpetuals · Pivex and Binance risk cards · last 30 published days</p>
+      </div>
+    </div>
+  </header>
+
+  <form class="controls" method="post" action="/">
+    <label>
+      <span>Strategy</span>
+      <select name="strategy">
+        {% for item in strategies %}
+        <option value="{{ item.id }}" {% if form.strategy == item.id %}selected{% endif %}>{{ item.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Venue</span>
+      <select name="venue" id="venue">
+        {% for venue in venues %}
+        <option value="{{ venue }}" {% if form.venue == venue %}selected{% endif %}>{{ venue_labels[venue] }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Symbol</span>
+      <select name="symbol" id="symbol">
+        {% for sid, meta in symbol_choices %}
+        <option value="{{ sid }}" {% if form.symbol == sid %}selected{% endif %}>{{ meta.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Starting balance</span>
+      <input name="balance" type="number" min="1" step="100" value="{{ form.balance }}" required>
+    </label>
+    <label>
+      <span>Commission % / side</span>
+      <input name="commission" type="number" min="0" step="0.01" value="{{ form.commission }}" required>
+    </label>
+    <label>
+      <span>Slippage %</span>
+      <input name="slippage" type="number" min="0" step="0.01" value="{{ form.slippage }}" required>
+    </label>
+    <label>
+      <span>Size k</span>
+      <input name="k" type="number" min="0.25" max="50" step="0.25" value="{{ form.k }}" required>
+    </label>
+    <label class="check">
+      <input name="daily_hama" type="checkbox" value="1" {% if form.daily_hama %}checked{% endif %}>
+      <span>Daily HAMA filter</span>
+    </label>
+    <button type="submit" id="run">Run</button>
+  </form>
+
+  {% if error %}
+  <div class="banner error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  {% if result %}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>{{ result.strategy }} · {{ result.venue_label }} · {{ result.symbol_label }}</h2>
+        <p class="muted">{{ result.window_label }}{% if result.daily_filter %} · daily HAMA filter on{% endif %}{% if result.k %} · k={{ result.k }}{% endif %}</p>
+        {% if result.note %}<p class="muted">{{ result.note }}</p>{% endif %}
+      </div>
+      <a class="export" id="export" href="/export.csv">Export CSV</a>
+    </div>
+
+    <h3>Overview</h3>
+    <div class="metrics">
+      {% for item in metrics %}
+      <div class="metric">
+        <span>{{ item.label }}</span>
+        <strong class="{{ item.tone }}">{{ item.value }}</strong>
+      </div>
+      {% endfor %}
+    </div>
+
+    <details class="rules">
+      <summary>Rules used for this run</summary>
+      <ul>
+        {% for rule in result.rules %}
+        <li>{{ rule }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+
+    <h3>Equity curve</h3>
+    <div id="equity-chart" class="chart"></div>
+    <h3>Price</h3>
+    <p class="muted chart-note">Arrows are entries (L / S). Circles are exits: TP partial take-profit, UL unload, X flip, SL stop, E end of test.</p>
+    <div id="price-chart" class="chart chart-price"></div>
+
+    <div class="panel-head">
+      <h3>List of trades</h3>
+      <p class="muted">{{ result.trades|length }} closed fills · click a column to sort</p>
+    </div>
+    {% if result.trades %}
+    <div class="table-wrap">
+      <table id="trades">
+        <thead>
+          <tr>
+            <th data-type="number">#</th>
+            <th data-type="text">Type</th>
+            <th data-type="text">Entry time</th>
+            <th data-type="number">Entry price</th>
+            <th data-type="text">Exit time</th>
+            <th data-type="number">Exit price</th>
+            <th data-type="text">Signal</th>
+            <th data-type="number">Size</th>
+            <th data-type="number">PnL $</th>
+            <th data-type="number">PnL %</th>
+            <th data-type="number">Cumulative PnL</th>
+            <th data-type="number">Run-up</th>
+            <th data-type="number">Drawdown</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for trade in result.trades %}
+          <tr>
+            <td data-value="{{ trade.n }}">{{ trade.n }}</td>
+            <td data-value="{{ trade.side }}" class="{{ 'pos' if trade.side == 'Long' else 'neg' }}">{{ trade.side }}</td>
+            <td data-value="{{ trade.entry_time }}">{{ trade.entry_time }}</td>
+            <td data-value="{{ trade.entry_price }}">{{ trade.entry_price|px }}</td>
+            <td data-value="{{ trade.exit_time }}">{{ trade.exit_time }}</td>
+            <td data-value="{{ trade.exit_price }}">{{ trade.exit_price|px }}</td>
+            <td data-value="{{ trade.reason }}">{{ trade.reason }}</td>
+            <td data-value="{{ trade.qty }}">{{ trade.qty|qty }}</td>
+            <td data-value="{{ trade.pnl }}" class="{{ 'pos' if trade.pnl > 0 else 'neg' if trade.pnl < 0 else '' }}">{{ trade.pnl|usd }}</td>
+            <td data-value="{{ trade.pnl_pct }}" class="{{ 'pos' if trade.pnl_pct > 0 else 'neg' if trade.pnl_pct < 0 else '' }}">{{ trade.pnl_pct|pct }}</td>
+            <td data-value="{{ trade.cumulative }}" class="{{ 'pos' if trade.cumulative > 0 else 'neg' if trade.cumulative < 0 else '' }}">{{ trade.cumulative|usd }}</td>
+            <td data-value="{{ trade.run_up }}">{{ trade.run_up|usd0 }}</td>
+            <td data-value="{{ trade.drawdown }}" class="{{ 'neg' if trade.drawdown else '' }}">{{ trade.drawdown|usd0 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">No closed trades in this window. The signal did not fire on {{ result.symbol_label }}.</p>
+    {% endif %}
+    <script id="chart-data" type="application/json">{{ result.chart|tojson }}</script>
+  </section>
+  {% else %}
+  <section class="panel empty-state">
+    <h2>Run a month on one setup</h2>
+    <p>Pick a strategy and a symbol. The tester pulls Binance USDT-M perpetual klines, caches them, and reports the overview, the equity curve, the price path with entries and exits, and every fill.</p>
+    <p class="muted">Partial take-profits close part of the position. Grid unloads close only the last level. The first download of a symbol takes a little while; the next run uses the cache.</p>
+  </section>
+  {% endif %}
+
+  <script id="catalog" type="application/json">{{ catalog|tojson }}</script>
+  <script src="{{ url_for('static', filename='lightweight-charts.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
