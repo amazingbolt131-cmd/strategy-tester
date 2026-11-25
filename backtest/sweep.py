@@ -108,9 +108,9 @@ STRATEGY_SPECS: dict[str, dict] = {
             "Rational Quadratic kernel: lookback=8, relativeWeight=8.0, startAtBar=25."
         ),
         "entry_rules": (
-            "Long: kNN prediction > 0 AND Rational Quadratic kernel rising (yh[t] > yh[t-1]) AND volatility filter AND regime filter. "
+            "Short only (longs disabled). "
             "Short: kNN prediction < 0 AND kernel falling (yh[t] < yh[t-1]) AND volatility filter AND regime filter. "
-            "Long takes priority if both fire. Fills at next 5m open + side x $0.01 tick. One position at a time."
+            "Fills at next 5m open - $0.01 tick. One position at a time."
         ),
         "exit_rules": (
             "Intra-bar SL or TP evaluated via TV OHLC bar-path walk. "

@@ -404,6 +404,7 @@ function ml(req) {
     sL = sig.sigL.map(function (v, i) { return v && colourOf(series, D.t[i] + 300000) === 1; });
     sS = sig.sigS.map(function (v, i) { return v && colourOf(series, D.t[i] + 300000) === -1; });
   }
+  sL = sL.map(function () { return false; }); // short-only: longs disabled
   const scale = scaleOf("ml_5m", req.venue, req.k);
   const closed = COMBO.flattenML(D, sL, sig.bssL, sS, sig.bssS, req.start);
   const trades = closed.filter(function (t) { return keep(t, req.start, req.end); }).map(function (t) {
@@ -416,8 +417,8 @@ function ml(req) {
   });
   const notional = UNIT.ML * scale;
   return { trades: trades, meta: { scale: scale, note: (req.venue === "pivex"
-    ? "Pivex single entry. ML notional $" + notional.toFixed(0) + " (10,000 × weight × k=" + req.k + "). Stop 3%, target 3.1%, time stop 300 bars."
-    : "Binance single entry. ML notional $10,000, not scaled by k. Stop 3%, target 3.1%, time stop 300 bars.") } };
+    ? "Pivex single entry, short only. ML notional $" + notional.toFixed(0) + " (10,000 × weight × k=" + req.k + "). Stop 3%, target 3.1%, time stop 300 bars."
+    : "Binance single entry, short only. ML notional $10,000, not scaled by k. Stop 3%, target 3.1%, time stop 300 bars.") } };
 }
 
 function kyivParts(ms) {

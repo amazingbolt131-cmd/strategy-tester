@@ -92,7 +92,7 @@ STRATEGIES = [
         "coins": {"pivex": [], "binance": []},
         "rules": [
             "Lorentzian kNN on five features (RSI 14, WaveTrend 10/11, CCI 20, ADX 20, RSI 9), 2,000-bar lookback, 12 neighbours, every 4th bar.",
-            "A volatility filter, a regime filter at −0.1, and a rational-quadratic kernel must agree. If long and short fire together, long wins.",
+            "A volatility filter, a regime filter at −0.1, and a rational-quadratic kernel must agree. Short only: long signals are ignored.",
             "Fill is the next 5m open, one tick through the open. Stop 3%, target 3.1%, time stop at 300 bars. One position at a time.",
             "Notional starts at $10,000, then × weight × k.",
         ],
