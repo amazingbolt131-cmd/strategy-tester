@@ -578,6 +578,29 @@
 
     let html = '<p class="muted">' + esc(uni.binance_source || "") + " " + esc(uni.pivex_note || "") +
       " Best symbol is the highest net profit on the default 30-day window, then PF, then trade count. Click a column header to sort. Default order is PF, then net return.</p>";
+
+    const mh = report.morning_hama;
+    if (mh) {
+      const st = mh.stats;
+      html += '<h3>' + esc(mh.label || "SOL 1m Morning HAMA — $1,000 target test") + '</h3>';
+      html += '<div class="analysis-box"><span class="analysis-tag">Test variant · official engine still has no target</span>';
+      html += '<p class="muted">' + esc(mh.note || "") + '</p>';
+      if (st) {
+        html += '<div class="metrics">' +
+          '<div class="metric"><span>Net profit</span><strong class="' + tone(st.net_profit) + '">' + esc(fmtMoney(st.net_profit, true)) + " (" + esc(fmtPct(st.net_profit_pct, true)) + ")</strong></div>" +
+          '<div class="metric"><span>Profit factor</span><strong>' + esc(fmtPf(st.profit_factor)) + "</strong></div>" +
+          '<div class="metric"><span>Max drawdown</span><strong class="' + (st.max_drawdown > 0 ? "neg" : "") + '">' + esc(fmtMoney(-st.max_drawdown)) + " (" + Number(st.max_drawdown_pct).toFixed(2) + "%)</strong></div>" +
+          '<div class="metric"><span>Win rate</span><strong>' + Number(st.win_rate).toFixed(2) + "%</strong></div>" +
+          '<div class="metric"><span>Trades</span><strong>' + st.total_trades + "</strong></div>" +
+          '<div class="metric"><span>Venue / symbol / TF</span><strong>' + esc((mh.venue_label || "Pivex") + " · " + (mh.symbol_label || "SOL") + " · " + (mh.timeframe || "1m")) + "</strong></div>" +
+          "</div>";
+      } else if (mh.row && mh.row.error) {
+        html += '<p class="neg">Error: ' + esc(mh.row.error) + "</p>";
+      } else {
+        html += '<p class="muted">No Morning HAMA result in this ranking run.</p>';
+      }
+      html += "</div>";
+    }
     html += '<div class="table-wrap"><table id="ranking-table" class="left-ranked"><thead><tr>' + head +
       "</tr></thead><tbody>";
     (report.ranked || []).forEach(function (r) { html += rowCells(r, true); });

@@ -101,6 +101,7 @@ def run_backtest(
     k: float = 8.0,
     daily_filter: bool = True,
     include_chart: bool = True,
+    profit_target: float | None = None,
 ) -> dict:
     if symbol not in SYMBOLS:
         raise ValueError(f"Unknown symbol {symbol}")
@@ -114,6 +115,7 @@ def run_backtest(
     engine = run_engine(
         strategy_id, symbol, venue, warmup, start, end,
         k=k, daily_filter=daily_filter,
+        profit_target=profit_target,
     )
     commission = float(commission_pct) / 100.0
     slippage = float(slippage_pct) / 100.0

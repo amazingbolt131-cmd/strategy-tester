@@ -446,13 +446,14 @@ function kyivMidnight(ms) {
 function sol1m(req) {
   const src = (req.series.m1 || []).map(function (r) { return [r[0], r[1], r[2], r[3], r[4]]; });
   const eng = SOL1M.engine(src);
+  const target = Number(req.profit_target || 0);
   const trades = [];
   if (src.length) {
     let day = kyivMidnight(src[0][0]);
     const last = src[src.length - 1][0] + 60000;
     while (day < last) {
       const info = SOL1M.dayInfo(src, day);
-      const sim = SOL1M.daySim(src, eng.fd, info);
+      const sim = SOL1M.daySim(src, eng.fd, info, { target: target });
       sim.trades.forEach(function (t) { trades.push(t); });
       day = kyivMidnight(day + 26 * 3600000);
     }
@@ -460,12 +461,16 @@ function sol1m(req) {
   const out = trades.filter(function (t) { return t.exit_ms >= req.start && t.entry_ms < req.end; }).map(function (t) {
     return row({
       side: t.dir, qty: t.qty, entry_ms: t.entry_ms, exit_ms: t.exit_ms,
-      entry: t.entry, exit: t.exit, stop: t.sl, tp: null,
+      entry: t.entry, exit: t.exit, stop: t.sl, tp: (t.reason === "TP" && target > 0) ? t.exit : null,
       entry_reason: "morning flip", exit_reason: t.reason,
       gross: t.pnl, fee: 0, net: t.pnl, adjustable: false
     });
   });
-  return { trades: out, meta: { note: "SOL 1m Morning HAMA. Fixed $40,000 notional, $0.06 spread, −$100 stop. Not scaled by k. 08:00 Kyiv day filter, ±1% to ±3%." } };
+  let note = "SOL 1m Morning HAMA. Fixed $40,000 notional, $0.06 spread, −$100 stop. Not scaled by k. 08:00 Kyiv day filter, ±1% to ±3%.";
+  if (target > 0) {
+    note += " Test variant: +$" + target.toFixed(0) + " per-trade profit target (the official Run/Start engine has no target).";
+  }
+  return { trades: out, meta: { note: note, profit_target: target || null } };
 }
 
 const HANDLERS = {

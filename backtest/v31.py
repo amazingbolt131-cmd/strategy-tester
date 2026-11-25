@@ -115,6 +115,7 @@ def run_engine(
     k: float = DEFAULT_K,
     daily_filter: bool = True,
     series: dict | None = None,
+    profit_target: float | None = None,
 ) -> dict:
     payload = {
         "id": strategy_id,
@@ -126,6 +127,8 @@ def run_engine(
         "daily_filter": bool(daily_filter) and venue == "pivex",
         "series": series if series is not None else _series(strategy_id, symbol, warmup, end),
     }
+    if profit_target is not None:
+        payload["profit_target"] = float(profit_target)
     proc = subprocess.run(
         [node_executable(), str(RUN_JS)],
         input=json.dumps(payload),

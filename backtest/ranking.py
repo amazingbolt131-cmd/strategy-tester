@@ -90,6 +90,18 @@ PIVEX_RANKING_SYMBOLS = [
     "SOLUSDT",
 ]
 
+MORNING_HAMA_TEST_TARGET = 1000.0
+MORNING_HAMA_TEST_NOTE = (
+    "SOL 1m Morning HAMA test variant on SOL only, native 1m timeframe. "
+    "The official engine has no take-profit (tp=False) and a -$100 per-trade dollar stop "
+    "checked on the 1m bar's adverse extreme, after a $0.06 entry spread, on a $40,000 notional. "
+    "This test applies a +$1,000 per-trade dollar take-profit the same way on the favorable extreme, "
+    "filled at the exact price that makes that trade's P&L = $1,000. "
+    "If the same 1m bar could hit both the -$100 stop and the +$1,000 target, the stop is filled first. "
+    "Run and Start still use the official no-target engine. Notional, stop, $600 day bust, and the "
+    "08:00 Kyiv day filter are unchanged."
+)
+
 NATIVE_TF_NOTE = (
     "Each strategy is run only on its own native signal and execution timeframes "
     "from the v3.1 engine config. Timeframes are not swept."
@@ -172,7 +184,12 @@ def ranking_plan() -> tuple[list[dict], list[dict]]:
         for strategy in STRATEGIES:
             if not venue_enabled(strategy, venue):
                 continue
-            for symbol in symbols:
+            use_symbols = symbols
+            if strategy["id"] == "sol1m_morning":
+                use_symbols = [s for s in symbols if s == "SOLUSDT"]
+                if not use_symbols:
+                    continue
+            for symbol in use_symbols:
                 canonical.append(
                     {
                         "order_idx": idx,
@@ -244,6 +261,26 @@ def best_per_strategy(rows: list[dict]) -> list[dict]:
     return rank_rows(winners)
 
 
+def _morning_hama_section(ranked: list[dict], rows: list[dict]) -> dict:
+    """Separate SOL 1m Morning HAMA $1,000-target results for the ranking report."""
+    best = next((row for row in ranked if row.get("strategy_id") == "sol1m_morning"), None)
+    matches = [row for row in rows if row.get("strategy_id") == "sol1m_morning"]
+    stats = (best or {}).get("stats") if best and not best.get("error") else None
+    return {
+        "label": "SOL 1m Morning HAMA — $1,000 target test",
+        "note": MORNING_HAMA_TEST_NOTE,
+        "symbol": "SOLUSDT",
+        "symbol_label": "SOL",
+        "venue": "pivex",
+        "venue_label": "Pivex",
+        "timeframe": "1m (native)",
+        "profit_target": MORNING_HAMA_TEST_TARGET,
+        "row": best,
+        "runs": matches,
+        "stats": stats,
+    }
+
+
 def build_ranking(
     rows: list[dict],
     window_label: str,
@@ -280,6 +317,7 @@ def build_ranking(
         },
         "ranked": ranked,
         "all_results": rows,
+        "morning_hama": _morning_hama_section(ranked, rows),
     }
 
 
@@ -308,6 +346,15 @@ def run_ranking(
         if progress_cb:
             progress_cb(done_idx, total, label)
         rules = strategy_rule_fields(item["strategy_id"])
+        extra = {}
+        if item["strategy_id"] == "sol1m_morning":
+            extra["profit_target"] = MORNING_HAMA_TEST_TARGET
+            rules = dict(rules)
+            rules["tp"] = (
+                "Test variant: +$1,000 per-trade profit target on SOL 1m "
+                "(official Run/Start engine has no target). "
+                "Filled on the 1m bar's favorable extreme at the exact price that makes that trade's P&L = $1,000."
+            )
         try:
             # Native timeframes only: run_backtest uses the engine's own series
             # (no timeframe argument, no TF sweep).
@@ -322,6 +369,7 @@ def run_ranking(
                 k=DEFAULT_K,
                 daily_filter=daily_filter,
                 include_chart=False,
+                **extra,
             )
             if not window_label:
                 window_label = result["window_label"]

@@ -98,9 +98,14 @@
     return r;
   }
   // sim.py sim_day(tp=False, rules={maxloss:1, stop:100}) over bars iT..min(i1,N)-1; dayOver -> day_end close.
-  function daySim(bars, fd, info) {
+  // opts.target (default 0) is an optional per-trade dollar take-profit. 0 keeps the official
+  // no-target engine. A positive value closes the open trade when that trade's P&L reaches it,
+  // on the 1m bar's favorable extreme, at the exact price that makes P&L equal the target.
+  // Same-bar priority matches the existing checks: BUST, then -$100 stop, then the dollar target.
+  function daySim(bars, fd, info, opts) {
     var trades = [], real = 0, pos = null, nloss = 0, busted = false, done = false, why = null, i, N = bars.length;
-    var res = { trades: trades, pnl: 0, pos: null, stopped: false, busted: false, why: null };
+    var target = (opts && opts.target) ? Number(opts.target) : 0;
+    var res = { trades: trades, pnl: 0, pos: null, stopped: false, busted: false, why: null, target: target };
     if (!info.ready || !info.dir) return res;
     var d0 = info.dir, end = Math.min(info.i1, N), dayOver = info.i1 < N || (N && bars[N - 1][0] + 60000 >= info.dayStart + 86400000);
     function close(px, i, reason) {
@@ -117,6 +122,10 @@
         if (weq <= -CFG.lossLimit) { close(e + (-CFG.lossLimit - real) / q * dd, i, 'BUST'); busted = true; why = 'bust'; break; }
         var fl = real - CFG.stop;
         if (weq <= fl) close(e + (fl - real) / q * dd, i, 'stop');
+        if (pos && target > 0) {
+          var best = dd === 1 ? h : l, bpnl = (best - e) * q * dd;
+          if (bpnl >= target) close(e + target / q * dd, i, 'TP');
+        }
       }
       if (CFG.maxloss && nloss >= CFG.maxloss) { done = true; why = 'maxloss'; }
       if (done) { if (pos) close(c, i, why); break; }
