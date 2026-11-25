@@ -45,7 +45,7 @@ DEFAULT_SLIPPAGE_PCT = 0.0
 
 # Warmup covers EMA200, the 25-day HAMA colour, and the Lorentzian lookback.
 WARMUP_DAYS = 40
-TEST_DAYS = 182
+TEST_DAYS = 30
 
 # Pivex combined-6 size is unit × weight × k. The live app defaults to k = 8.
 DEFAULT_K = 8.0
@@ -85,7 +85,6 @@ STRATEGIES = [
     },
     {
         "id": "ml_5m",
-        "binance": False,
         "label": "ML Lorentz · 5m",
         "group": "v31",
         "chart_tf": "5m",
