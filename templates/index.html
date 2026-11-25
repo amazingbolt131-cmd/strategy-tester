@@ -44,37 +44,62 @@
     </label>
     <label>
       <span>Starting balance</span>
-      <input name="balance" type="number" min="1" step="100" value="{{ form.balance }}" required>
+      <input name="balance" id="balance" type="number" min="1" step="any" value="{{ form.balance }}" required>
     </label>
     <label>
       <span>Commission % / side</span>
-      <input name="commission" type="number" min="0" step="0.01" value="{{ form.commission }}" required>
+      <input name="commission" id="commission" type="number" min="0" step="0.01" value="{{ form.commission }}" required>
     </label>
     <label>
       <span>Slippage %</span>
-      <input name="slippage" type="number" min="0" step="0.01" value="{{ form.slippage }}" required>
-    </label>
-    <label>
-      <span>Size k</span>
-      <input name="k" type="number" min="0.25" max="50" step="0.25" value="{{ form.k }}" required>
+      <input name="slippage" id="slippage" type="number" min="0" step="0.01" value="{{ form.slippage }}" required>
     </label>
     <label class="check">
-      <input name="daily_hama" type="checkbox" value="1" {% if form.daily_hama %}checked{% endif %}>
+      <input name="daily_hama" id="daily_hama" type="checkbox" value="1" {% if form.daily_hama %}checked{% endif %}>
       <span>Daily HAMA filter</span>
     </label>
-    <button type="submit" id="run">Run</button>
+    <div class="actions">
+      <button type="submit" id="run">Run</button>
+      <button type="button" id="start-sweep" class="btn-start" title="Analyze every strategy and coin across Pivex and Binance">Start</button>
+    </div>
   </form>
 
   {% if error %}
   <div class="banner error" role="alert">{{ error }}</div>
   {% endif %}
 
+  <section class="panel sweep-panel" id="sweep-panel" hidden>
+    <div class="panel-head">
+      <div>
+        <h2>Full Strategy Analysis</h2>
+        <p class="muted" id="sweep-meta">Starting sweep across all enabled Pivex and Binance setups…</p>
+      </div>
+      <div class="sweep-actions" id="sweep-actions" hidden>
+        <button type="button" id="copy-report" class="export">Copy report</button>
+        <a class="export" id="download-report" href="#" download>Download .md</a>
+      </div>
+    </div>
+
+    <div class="progress-wrap" id="sweep-progress-wrap">
+      <div class="progress-head">
+        <span id="sweep-status-text">Preparing…</span>
+        <span id="sweep-count">0 / 0</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-bar" id="sweep-progress-bar" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <div class="banner error" id="sweep-error" role="alert" hidden></div>
+    <div id="sweep-report" hidden></div>
+  </section>
+
   {% if result %}
-  <section class="panel">
+  <section class="panel" id="single-result">
     <div class="panel-head">
       <div>
         <h2>{{ result.strategy }} · {{ result.venue_label }} · {{ result.symbol_label }}</h2>
-        <p class="muted">{{ result.window_label }}{% if result.daily_filter %} · daily HAMA filter on{% endif %}{% if result.k %} · k={{ result.k }}{% endif %}</p>
+        <p class="muted">{{ result.window_label }}{% if result.daily_filter %} · daily HAMA filter on{% endif %}</p>
         {% if result.note %}<p class="muted">{{ result.note }}</p>{% endif %}
       </div>
       <a class="export" id="export" href="/export.csv">Export CSV</a>
@@ -156,9 +181,9 @@
     <script id="chart-data" type="application/json">{{ result.chart|tojson }}</script>
   </section>
   {% else %}
-  <section class="panel empty-state">
-    <h2>Run a month on one setup</h2>
-    <p>Pick a strategy and a symbol. The tester pulls Binance USDT-M perpetual klines, caches them, and reports the overview, the equity curve, the price path with entries and exits, and every fill.</p>
+  <section class="panel empty-state" id="empty-state">
+    <h2>Run a month on one setup — or press Start for all strategies</h2>
+    <p>Pick a strategy and a symbol and press <strong>Run</strong> for a single chart + trade list, or press <strong>Start</strong> to test every enabled Pivex and Binance strategy/coin combo and generate a full report ready to paste into another AI.</p>
     <p class="muted">Partial take-profits close part of the position. Grid unloads close only the last level. The first download of a symbol takes a little while; the next run uses the cache.</p>
   </section>
   {% endif %}

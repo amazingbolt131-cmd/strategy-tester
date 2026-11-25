@@ -13,6 +13,7 @@ import io
 import threading
 import time
 import zipfile
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -29,7 +30,8 @@ VISION = "https://data.binance.vision/data/futures/um/daily/klines"
 USER_AGENT = "strategy-backtester/1.0"
 
 _LOCK = threading.Lock()
-_MEMO: dict[str, "Bars"] = {}
+_MEMO: "OrderedDict[tuple[str, int, int], Bars]" = OrderedDict()
+_MEMO_MAX = 5
 
 
 @dataclass
@@ -145,11 +147,24 @@ def _read_day(path: Path) -> Bars:
 
 def load_1m(symbol: str, start_ms: int, end_ms: int) -> Bars:
     """1m bars covering [start_ms, end_ms). Cached on disk and in memory."""
-    key = f"{symbol}:{start_ms}:{end_ms}"
+    key = (symbol, start_ms, end_ms)
     with _LOCK:
         cached = _MEMO.get(key)
-    if cached is not None:
-        return cached
+        if cached is not None:
+            _MEMO.move_to_end(key)
+            return cached
+        for (c_sym, c_start, c_end), c_bars in _MEMO.items():
+            if c_sym == symbol and c_start <= start_ms and c_end >= end_ms:
+                _MEMO.move_to_end((c_sym, c_start, c_end))
+                mask = (c_bars.open_time >= start_ms) & (c_bars.open_time < end_ms)
+                return Bars(
+                    open_time=c_bars.open_time[mask],
+                    open=c_bars.open[mask],
+                    high=c_bars.high[mask],
+                    low=c_bars.low[mask],
+                    close=c_bars.close[mask],
+                    volume=c_bars.volume[mask],
+                )
 
     start_day = _as_utc_date(start_ms)
     end_day = _as_utc_date(end_ms - 1)
@@ -210,6 +225,9 @@ def load_1m(symbol: str, start_ms: int, end_ms: int) -> Bars:
         raise RuntimeError(f"No 1m futures bars for {symbol}")
     with _LOCK:
         _MEMO[key] = bars
+        _MEMO.move_to_end(key)
+        while len(_MEMO) > _MEMO_MAX:
+            _MEMO.popitem(last=False)
     return bars
 
 

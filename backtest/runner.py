@@ -100,6 +100,7 @@ def run_backtest(
     venue: str = "pivex",
     k: float = 8.0,
     daily_filter: bool = True,
+    include_chart: bool = True,
 ) -> dict:
     if symbol not in SYMBOLS:
         raise ValueError(f"Unknown symbol {symbol}")
@@ -117,9 +118,28 @@ def run_backtest(
     commission = float(commission_pct) / 100.0
     slippage = float(slippage_pct) / 100.0
     book = _book_from_engine(engine["trades"], float(balance), commission, slippage, start)
-    chart_bars = load_tf(symbol, cfg["chart_tf"], start, end)
     book.finish()
-    stats = summarize(book, float(balance))
+    stats = summarize(book, float(balance), start_ms=start, end_ms=end)
+    if not include_chart:
+        return {
+            "strategy_id": strategy_id,
+            "strategy": cfg["label"],
+            "venue": venue,
+            "venue_label": cfg["venue_label"],
+            "symbol": symbol,
+            "symbol_label": SYMBOLS[symbol]["label"],
+            "rules": list(cfg["rules"]) + ([engine["meta"].get("note", "")] if engine["meta"].get("note") else []),
+            "note": engine["meta"].get("note", ""),
+            "k": k,
+            "daily_filter": daily_filter and venue == "pivex",
+            "stats": stats,
+            "trades": [],
+            "chart": None,
+            "window_label": f"{_iso(start)} → {_iso(end)} UTC",
+            "window_start": _iso(start),
+            "window_end": _iso(end),
+        }
+    chart_bars = load_tf(symbol, cfg["chart_tf"], start, end)
     chart = _slice(chart_bars, start, end)
     eq_t, eq_v = _downsample(book.equity_time, book.equity_value)
 

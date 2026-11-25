@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import csv
 import io
+import threading
+import time
 import traceback
+import uuid
+from datetime import datetime, timezone
 
-from flask import Flask, Response, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 
 from backtest.config import (
     DEFAULT_BALANCE,
@@ -14,8 +18,6 @@ from backtest.config import (
     DEFAULT_DAILY_FILTER,
     DEFAULT_K,
     DEFAULT_SLIPPAGE_PCT,
-    K_MAX,
-    K_MIN,
     STRATEGY_BY_ID,
     STRATEGIES,
     SYMBOLS,
@@ -26,9 +28,15 @@ from backtest.config import (
     venue_enabled,
 )
 from backtest.runner import run_backtest
+from backtest.sweep import combo_plan, run_sweep
 
 app = Flask(__name__)
 LAST: dict = {}
+
+_SWEEP_LOCK = threading.Lock()
+_SWEEP_RUN_LOCK = threading.Lock()
+_SWEEP_JOBS: dict[str, dict] = {}
+_MAX_JOBS = 5
 
 
 def _money(value: float, signed: bool = False) -> str:
@@ -92,18 +100,15 @@ def _form() -> dict:
         symbol = allowed[0]
     if request.method == "POST":
         daily = request.form.get("daily_hama") == "1"
-        k_raw = request.form.get("k", str(DEFAULT_K))
     else:
         daily = DEFAULT_DAILY_FILTER
-        k_raw = str(int(DEFAULT_K)) if DEFAULT_K == int(DEFAULT_K) else str(DEFAULT_K)
     return {
         "strategy": strategy,
         "venue": venue,
         "symbol": symbol,
-        "balance": request.form.get("balance", str(int(DEFAULT_BALANCE))),
-        "commission": request.form.get("commission", str(DEFAULT_COMMISSION_PCT)),
-        "slippage": request.form.get("slippage", str(DEFAULT_SLIPPAGE_PCT)),
-        "k": k_raw,
+        "balance": request.form.get("balance", str(int(DEFAULT_BALANCE))) or str(int(DEFAULT_BALANCE)),
+        "commission": request.form.get("commission", str(DEFAULT_COMMISSION_PCT)) or str(DEFAULT_COMMISSION_PCT),
+        "slippage": request.form.get("slippage", str(DEFAULT_SLIPPAGE_PCT)) or str(DEFAULT_SLIPPAGE_PCT),
         "daily_hama": daily,
     }
 
@@ -196,9 +201,6 @@ def index():
             balance = float(form["balance"])
             commission = float(form["commission"])
             slippage = float(form["slippage"])
-            k = float(form["k"])
-            if k < K_MIN or k > K_MAX:
-                raise ValueError(f"Size k must be between {K_MIN} and {K_MAX}")
             result = run_backtest(
                 form["strategy"],
                 form["symbol"],
@@ -206,7 +208,7 @@ def index():
                 commission,
                 slippage,
                 venue=form["venue"],
-                k=k,
+                k=DEFAULT_K,
                 daily_filter=bool(form["daily_hama"]),
             )
             metrics = _metrics(result["stats"])
@@ -239,6 +241,143 @@ def export_csv():
         _csv(result),
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment; filename={name}"},
+    )
+
+
+@app.route("/sweep/start", methods=["POST"])
+def sweep_start():
+    payload = request.get_json(silent=True) or request.form or {}
+    try:
+        balance = float(payload.get("balance", DEFAULT_BALANCE))
+        commission = float(payload.get("commission", DEFAULT_COMMISSION_PCT))
+        slippage = float(payload.get("slippage", DEFAULT_SLIPPAGE_PCT))
+        raw_daily = payload.get("daily_hama", DEFAULT_DAILY_FILTER)
+        daily_filter = raw_daily in (True, 1, "1", "true", "True")
+        if balance <= 0:
+            raise ValueError("Starting balance must be positive")
+        if commission < 0 or slippage < 0:
+            raise ValueError("Commission and slippage cannot be negative")
+    except (TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    canonical, _ = combo_plan()
+    total = len(canonical)
+    job_id = uuid.uuid4().hex[:12]
+
+    with _SWEEP_LOCK:
+        for existing in _SWEEP_JOBS.values():
+            if existing["status"] in ("queued", "running"):
+                existing["cancelled"] = True
+        _SWEEP_JOBS[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "done": 0,
+            "total": total,
+            "current": "Preparing full analysis…",
+            "started_at": time.monotonic(),
+            "elapsed_s": 0.0,
+            "error": None,
+            "report": None,
+            "cancelled": False,
+        }
+        while len(_SWEEP_JOBS) > _MAX_JOBS:
+            oldest_id = next(iter(_SWEEP_JOBS))
+            if oldest_id != job_id:
+                _SWEEP_JOBS.pop(oldest_id, None)
+            else:
+                break
+
+    def _worker() -> None:
+        with _SWEEP_RUN_LOCK:
+            with _SWEEP_LOCK:
+                job = _SWEEP_JOBS.get(job_id)
+                if not job or job["cancelled"]:
+                    if job:
+                        job["status"] = "cancelled"
+                    return
+                job["status"] = "running"
+                job["started_at"] = time.monotonic()
+
+            def _progress(done: int, tot: int, label: str) -> None:
+                with _SWEEP_LOCK:
+                    j = _SWEEP_JOBS.get(job_id)
+                    if j:
+                        j["done"] = done
+                        j["total"] = tot
+                        j["current"] = label
+                        j["elapsed_s"] = round(time.monotonic() - j["started_at"], 1)
+
+            def _is_cancelled() -> bool:
+                with _SWEEP_LOCK:
+                    j = _SWEEP_JOBS.get(job_id)
+                    return bool(not j or j["cancelled"])
+
+            try:
+                report = run_sweep(
+                    balance=balance,
+                    commission=commission,
+                    slippage=slippage,
+                    daily_filter=daily_filter,
+                    progress_cb=_progress,
+                    cancel_check=_is_cancelled,
+                )
+                with _SWEEP_LOCK:
+                    j = _SWEEP_JOBS.get(job_id)
+                    if j:
+                        j["status"] = "done"
+                        j["done"] = total
+                        j["total"] = total
+                        j["current"] = "Complete"
+                        j["elapsed_s"] = round(time.monotonic() - j["started_at"], 1)
+                        j["report"] = report
+            except Exception as exc:  # noqa: BLE001
+                traceback.print_exc()
+                with _SWEEP_LOCK:
+                    j = _SWEEP_JOBS.get(job_id)
+                    if j:
+                        j["status"] = "cancelled" if j["cancelled"] else "error"
+                        j["error"] = str(exc)
+                        j["elapsed_s"] = round(time.monotonic() - j["started_at"], 1)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    return jsonify({"job_id": job_id, "total": total}), 202
+
+
+@app.route("/sweep/<job_id>")
+def sweep_status(job_id: str):
+    with _SWEEP_LOCK:
+        job = _SWEEP_JOBS.get(job_id)
+        if not job:
+            return jsonify({"error": "Sweep job not found"}), 404
+        elapsed = job["elapsed_s"]
+        if job["status"] in ("queued", "running"):
+            elapsed = round(time.monotonic() - job["started_at"], 1)
+        payload = {
+            "job_id": job["job_id"],
+            "status": job["status"],
+            "done": job["done"],
+            "total": job["total"],
+            "current": job["current"],
+            "elapsed_s": elapsed,
+            "error": job["error"],
+            "report": job["report"] if job["status"] == "done" else None,
+        }
+    return jsonify(payload)
+
+
+@app.route("/sweep/<job_id>/report.md")
+def sweep_report_md(job_id: str):
+    with _SWEEP_LOCK:
+        job = _SWEEP_JOBS.get(job_id)
+        if not job or job["status"] != "done" or not job["report"]:
+            return Response("Report not ready.\n", status=404, mimetype="text/plain")
+        md = job["report"]["report_md"]
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return Response(
+        md,
+        mimetype="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=strategy-report-{stamp}.md"},
     )
 
 
