@@ -23,14 +23,6 @@
     function syncChoices() {
       const spec = catalog[strategySelect.value];
       if (!spec) return;
-      Array.from(venueSelect.options).forEach(function (option) {
-        const venue = spec.venues[option.value];
-        option.disabled = !venue || !venue.enabled;
-      });
-      if (venueSelect.selectedOptions[0] && venueSelect.selectedOptions[0].disabled) {
-        const fallback = Array.from(venueSelect.options).find(function (option) { return !option.disabled; });
-        if (fallback) venueSelect.value = fallback.value;
-      }
       const venue = spec.venues[venueSelect.value];
       const current = symbolSelect.value;
       symbolSelect.innerHTML = "";
