@@ -71,6 +71,7 @@ STRATEGIES = [
     },
     {
         "id": "turtle_5m",
+        "binance": False,
         "label": "Reversal Turtle MTF · 5m",
         "group": "v31",
         "chart_tf": "5m",
@@ -133,6 +134,7 @@ STRATEGIES = [
     },
     {
         "id": "s5_15m",
+        "binance": False,
         "label": "S5 15m (add, TP1/TP2)",
         "group": "v31",
         "chart_tf": "15m",
