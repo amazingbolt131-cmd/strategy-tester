@@ -22,7 +22,7 @@ from urllib.request import Request, urlopen
 
 import numpy as np
 
-from .config import WARMUP_DAYS
+from .config import TEST_DAYS, WARMUP_DAYS
 
 CACHE = Path(__file__).resolve().parent.parent / "data" / "cache"
 VISION = "https://data.binance.vision/data/futures/um/daily/klines"
@@ -70,12 +70,12 @@ def latest_published_day(symbol: str = "BTCUSDT") -> date:
 def test_window(last_day: date | None = None) -> tuple[int, int, int]:
     """Return warmup_start_ms, test_start_ms, test_end_ms (end exclusive).
 
-    The test is the 30 UTC days ending at the close of the last published day.
+    The test is the TEST_DAYS UTC days ending at the close of the last published day.
     """
     last_day = last_day or latest_published_day()
     end = datetime(last_day.year, last_day.month, last_day.day, tzinfo=timezone.utc) + timedelta(days=1)
     end_ms = int(end.timestamp() * 1000)
-    start_ms = end_ms - 30 * 24 * 60 * 60 * 1000
+    start_ms = end_ms - TEST_DAYS * 24 * 60 * 60 * 1000
     warmup_ms = start_ms - WARMUP_DAYS * 24 * 60 * 60 * 1000
     return warmup_ms, start_ms, end_ms
 
