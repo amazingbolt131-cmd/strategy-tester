@@ -65,23 +65,23 @@ def test_ranking_plan_covers_enabled_strategies_only():
     for strategy in STRATEGIES:
         if venue_enabled(strategy, "pivex"):
             assert strategy["id"] in pivex_strats
-            expected = 1 if strategy["id"] == "sol1m_morning" else 6
+            expected = 6
             assert sum(1 for row in pivex if row["strategy_id"] == strategy["id"]) == expected
             if strategy["id"] == "sol1m_morning":
-                only = [row["symbol"] for row in pivex if row["strategy_id"] == strategy["id"]]
-                assert only == ["SOLUSDT"]
+                coins = [row["symbol"] for row in pivex if row["strategy_id"] == strategy["id"]]
+                assert coins == PIVEX_RANKING_SYMBOLS
         else:
             assert strategy["id"] not in pivex_strats
-        if venue_enabled(strategy, "binance"):
+        if venue_enabled(strategy, "binance") or strategy["id"] == "sol1m_morning":
             assert strategy["id"] in binance_strats
             assert sum(1 for row in binance if row["strategy_id"] == strategy["id"]) == 38
         else:
             assert strategy["id"] not in binance_strats
 
-    # 7 Pivex strategies x 6 + 7 Binance strategies x 38
-    assert len(pivex) == 6 * 6 + 1  # six strategies on 6 coins + Morning HAMA on SOL only
-    assert len(binance) == 7 * 38
-    assert len(canonical) == 37 + 266
+    # 7 Pivex strategies x 6 coins + 8 Binance strategies x 38 (Morning HAMA added on Binance for Ranking only)
+    assert len(pivex) == 7 * 6
+    assert len(binance) == 8 * 38
+    assert len(canonical) == 42 + 304
 
 
 def test_split_tp_sl_uses_existing_sentences_only():
@@ -178,7 +178,12 @@ def test_run_ranking_uses_native_timeframes_and_default_window():
     assert seen, "expected mocked backtests"
     morning = [item for item in seen if item[0] == "sol1m_morning"]
     others = [item for item in seen if item[0] != "sol1m_morning"]
-    assert morning and all(item[1] == "SOLUSDT" for item in morning)
+    assert morning
+    morning_syms = sorted({item[1] for item in morning})
+    assert "SOLUSDT" in morning_syms
+    assert "BTCUSDT" in morning_syms
+    assert "ETHUSDT" in morning_syms
+    assert len(morning) == 6 + 38  # 6 Pivex + 38 Binance
     for _strategy_id, _symbol, kwargs in seen:
         assert kwargs["window"] == window
         assert "timeframe" not in kwargs
@@ -192,10 +197,9 @@ def test_run_ranking_uses_native_timeframes_and_default_window():
         assert "profit_target" not in kwargs
     assert report["settings"]["native_timeframes"] == NATIVE_TF_NOTE
     assert report["morning_hama"]["profit_target"] == 1000.0
-    assert report["morning_hama"]["symbol"] == "SOLUSDT"
-    assert report["summary"]["total_combos"] == 303
-    assert report["summary"]["strategies_ranked"] == 14
-    assert len(report["ranked"]) == 14
+    assert report["summary"]["total_combos"] == 346
+    assert report["summary"]["strategies_ranked"] == 15
+    assert len(report["ranked"]) == 15
     assert all(row["symbol"] in SYMBOLS for row in report["ranked"])
 
 
@@ -221,7 +225,7 @@ def test_ranking_start_endpoint_uses_default_balance(monkeypatch):
     started = client.post("/ranking/start", json={})
     assert started.status_code == 202
     job_id = started.get_json()["job_id"]
-    assert started.get_json()["total"] == 303
+    assert started.get_json()["total"] == 346
 
     # Poll until the background worker finishes (mocked, should be fast).
     payload = None

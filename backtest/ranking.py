@@ -94,14 +94,13 @@ PIVEX_RANKING_SYMBOLS = [
 
 MORNING_HAMA_TEST_TARGET = 1000.0
 MORNING_HAMA_TEST_NOTE = (
-    "SOL 1m Morning HAMA test variant on SOL only, native 1m timeframe. "
-    "The official engine has no take-profit (tp=False) and a -$100 per-trade dollar stop "
-    "checked on the 1m bar's adverse extreme, after a $0.06 entry spread, on a $40,000 notional. "
-    "This test applies a +$1,000 per-trade dollar take-profit the same way on the favorable extreme, "
-    "filled at the exact price that makes that trade's P&L = $1,000. "
-    "If the same 1m bar could hit both the -$100 stop and the +$1,000 target, the stop is filled first. "
-    "Run and Start still use the official no-target engine. Notional, stop, $600 day bust, and the "
-    "08:00 Kyiv day filter are unchanged."
+    "SOL 1m Morning HAMA engine, native 1m, tested on every Ranking coin (6 known Pivex coins and "
+    "38 Binance USDT-M perps). Official rules are unchanged: $40,000 notional, −$100 stop, $600 day bust, "
+    "08:00 Kyiv day filter, no take-profit. The $0.06/unit entry spread is SOL-specific; on other symbols "
+    "it is scaled to the same fraction of price as $0.06 / SOL 1m close on that bar, so SOL itself stays "
+    "at $0.06. This ranking row uses the +$1,000 per-trade dollar take-profit test variant (stop is filled "
+    "first if the same bar could hit both). Run and Start stay on the official no-target engine and their "
+    "dropdown lists are unchanged."
 )
 
 
@@ -115,9 +114,11 @@ SUSPECT_ROWS = {
 
 DEFAULT_RANKING_PATH = Path(__file__).resolve().parent.parent / "data" / "ranking_default.json"
 DEFAULT_RANKING_LABEL = (
-    "Precomputed default · local 303-combo run on 25 Nov 2026, 20:31–21:09 Europe/Kiev (35.3 min) · "
-    "1-year window 2025-11-25 00:00 → 2026-11-25 00:00 UTC · includes the former 2026-07-01 to 2026-10-25 holdout · "
-    "$10,000 start, 0.04%/side, 0 slip, daily HAMA on · 301 of 303 combos completed"
+    "Precomputed default · 1-year window 2025-11-25 00:00 → 2026-11-25 00:00 UTC · "
+    "includes the former 2026-07-01 to 2026-10-25 holdout · $10,000 start, 0.04%/side, 0 slip, daily HAMA on · "
+    "Other strategies from the local 303-combo run on 25 Nov 2026, 20:31–21:09 Europe/Kiev · "
+    "Morning HAMA rerun 25 Nov 2026, 21:33–21:41 Europe/Kiev on all 6 known Pivex coins and all 38 Binance USDT coins "
+    "(76 of 76 engine runs; tab rows use the +$1,000 target). 344 of 346 ranking combos completed."
 )
 
 _DEFAULT_RANKING: dict | None = None
@@ -272,14 +273,12 @@ def ranking_plan() -> tuple[list[dict], list[dict]]:
         ("binance", ranking_universe("binance")),
     ):
         for strategy in STRATEGIES:
-            if not venue_enabled(strategy, venue):
+            # Ranking-only: Morning HAMA is tested on this venue's full coin list,
+            # including Binance, even though Run/Start still have it Pivex-only.
+            ranking_morning_binance = strategy["id"] == "sol1m_morning" and venue == "binance"
+            if not venue_enabled(strategy, venue) and not ranking_morning_binance:
                 continue
-            use_symbols = symbols
-            if strategy["id"] == "sol1m_morning":
-                use_symbols = [s for s in symbols if s == "SOLUSDT"]
-                if not use_symbols:
-                    continue
-            for symbol in use_symbols:
+            for symbol in symbols:
                 canonical.append(
                     {
                         "order_idx": idx,
@@ -352,20 +351,23 @@ def best_per_strategy(rows: list[dict]) -> list[dict]:
 
 
 def _morning_hama_section(ranked: list[dict], rows: list[dict]) -> dict:
-    """Separate SOL 1m Morning HAMA $1,000-target results for the ranking report."""
-    best = next((row for row in ranked if row.get("strategy_id") == "sol1m_morning"), None)
+    """Morning HAMA $1,000-target results: best symbol among all coins tested."""
+    ranked_morning = [row for row in ranked if row.get("strategy_id") == "sol1m_morning"]
     matches = [row for row in rows if row.get("strategy_id") == "sol1m_morning"]
+    ok = [row for row in ranked_morning if not row.get("error") and row.get("stats")]
+    best = sorted(ok, key=_best_key)[0] if ok else (ranked_morning[0] if ranked_morning else None)
     stats = (best or {}).get("stats") if best and not best.get("error") else None
     return {
-        "label": "SOL 1m Morning HAMA — $1,000 target test",
+        "label": "SOL 1m Morning HAMA — $1,000 target test, all Ranking coins",
         "note": MORNING_HAMA_TEST_NOTE,
-        "symbol": "SOLUSDT",
-        "symbol_label": "SOL",
-        "venue": "pivex",
-        "venue_label": "Pivex",
+        "symbol": (best or {}).get("symbol"),
+        "symbol_label": (best or {}).get("symbol_label"),
+        "venue": (best or {}).get("venue"),
+        "venue_label": (best or {}).get("venue_label"),
         "timeframe": "1m (native)",
         "profit_target": MORNING_HAMA_TEST_TARGET,
         "row": best,
+        "rows": ranked_morning,
         "runs": matches,
         "stats": stats,
     }
@@ -442,7 +444,7 @@ def run_ranking(
             extra["profit_target"] = MORNING_HAMA_TEST_TARGET
             rules = dict(rules)
             rules["tp"] = (
-                "Test variant: +$1,000 per-trade profit target on SOL 1m "
+                "Test variant: +$1,000 per-trade profit target on the native 1m "
                 "(official Run/Start engine has no target). "
                 "Filled on the 1m bar's favorable extreme at the exact price that makes that trade's P&L = $1,000."
             )

@@ -135,7 +135,14 @@
         if (pos && pos.d !== f) close(cl, i, 'flip');
         if (CFG.maxloss && nloss >= CFG.maxloss) { done = true; why = 'maxloss'; break; }
         if (!pos && f === d0) {
-          var ep = cl + CFG.spread * f, qq = round2(CFG.notional / cl);
+          // Official spread is a fixed $0.06/unit on SOL. On other symbols, if
+          // opts.solCloses[i] is the SOL 1m close at this bar, scale to the same
+          // fraction of price: spread = 0.06 * (cl / solClose). On SOL this is $0.06.
+          var spread = CFG.spread;
+          if (opts && opts.solCloses && opts.solCloses[i] > 0) {
+            spread = CFG.spread * (cl / opts.solCloses[i]);
+          }
+          var ep = cl + spread * f, qq = round2(CFG.notional / cl);
           pos = { d: f, e: ep, q: qq, i: i, c: cl, sl: ep + (-CFG.stop) / qq * f };
         }
       }

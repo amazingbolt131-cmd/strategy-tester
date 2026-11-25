@@ -443,17 +443,32 @@ function kyivMidnight(ms) {
   throw new Error("could not resolve Kyiv midnight");
 }
 
+function alignSolCloses(src, solRows) {
+  if (!solRows || !solRows.length) return null;
+  const map = new Map();
+  solRows.forEach(function (r) {
+    const px = (r[4] != null) ? Number(r[4]) : Number(r[1]);
+    if (r[0] != null && px > 0) map.set(Number(r[0]), px);
+  });
+  let last = 0;
+  return src.map(function (b) {
+    if (map.has(b[0])) last = map.get(b[0]);
+    return last;
+  });
+}
+
 function sol1m(req) {
   const src = (req.series.m1 || []).map(function (r) { return [r[0], r[1], r[2], r[3], r[4]]; });
   const eng = SOL1M.engine(src);
   const target = Number(req.profit_target || 0);
+  const solCloses = alignSolCloses(src, req.series.sol_m1);
   const trades = [];
   if (src.length) {
     let day = kyivMidnight(src[0][0]);
     const last = src[src.length - 1][0] + 60000;
     while (day < last) {
       const info = SOL1M.dayInfo(src, day);
-      const sim = SOL1M.daySim(src, eng.fd, info, { target: target });
+      const sim = SOL1M.daySim(src, eng.fd, info, { target: target, solCloses: solCloses });
       sim.trades.forEach(function (t) { trades.push(t); });
       day = kyivMidnight(day + 26 * 3600000);
     }
@@ -466,7 +481,7 @@ function sol1m(req) {
       gross: t.pnl, fee: 0, net: t.pnl, adjustable: false
     });
   });
-  let note = "SOL 1m Morning HAMA. Fixed $40,000 notional, $0.06 spread, −$100 stop. Not scaled by k. 08:00 Kyiv day filter, ±1% to ±3%.";
+  let note = "SOL 1m Morning HAMA engine. Fixed $40,000 notional, −$100 stop, $600 day bust, 08:00 Kyiv day filter, ±1% to ±3%. Spread is $0.06/unit on SOL, and the same fraction of price on other symbols (0.06 / SOL 1m close at that bar). Not scaled by k.";
   if (target > 0) {
     note += " Test variant: +$" + target.toFixed(0) + " per-trade profit target (the official Run/Start engine has no target).";
   }

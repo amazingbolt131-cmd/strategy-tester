@@ -88,6 +88,8 @@ def _series(strategy_id: str, symbol: str, warmup: int, end: int, skip_missing_d
         series["m1"] = tf(symbol, "1m")
     elif strategy_id in ("hama_grid_5m", "hama_grid_1m", "sol1m_morning"):
         series["m1"] = tf(symbol, "1m")
+        if strategy_id == "sol1m_morning" and symbol != "SOLUSDT":
+            series["sol_m1"] = tf("SOLUSDT", "1m")
     elif strategy_id == "micro_1h":
         series["h1"] = tf(symbol, "1h")
         series["m5"] = tf(symbol, "5m")
