@@ -5,6 +5,21 @@
   const symbolSelect = document.getElementById("symbol");
   if (catalogNode && strategySelect && venueSelect && symbolSelect) {
     const catalog = JSON.parse(catalogNode.textContent);
+    const allStrategies = Array.from(strategySelect.options).map(function (o) { return { value: o.value, label: o.textContent }; });
+    function filterStrategies() {
+      const v = venueSelect.value;
+      const current = strategySelect.value;
+      strategySelect.innerHTML = "";
+      allStrategies.forEach(function (item) {
+        const spec = catalog[item.value];
+        if (!spec || !spec.venues[v] || !spec.venues[v].enabled) return;
+        const option = document.createElement("option");
+        option.value = item.value;
+        option.textContent = item.label;
+        if (item.value === current) option.selected = true;
+        strategySelect.appendChild(option);
+      });
+    }
     function syncChoices() {
       const spec = catalog[strategySelect.value];
       if (!spec) return;
@@ -28,7 +43,8 @@
       });
     }
     strategySelect.addEventListener("change", syncChoices);
-    venueSelect.addEventListener("change", syncChoices);
+    venueSelect.addEventListener("change", function () { filterStrategies(); syncChoices(); });
+    filterStrategies();
     syncChoices();
   }
 

@@ -56,6 +56,7 @@ DEFAULT_DAILY_FILTER = True
 STRATEGIES = [
     {
         "id": "micro_1h",
+        "binance": False,
         "label": "Pivex Micro · 1h",
         "group": "v31",
         "chart_tf": "1h",
@@ -98,6 +99,7 @@ STRATEGIES = [
     },
     {
         "id": "hama_30m",
+        "binance": False,
         "label": "HAMA 30m",
         "group": "v31",
         "chart_tf": "30m",
@@ -114,6 +116,7 @@ STRATEGIES = [
     },
     {
         "id": "hama_1h",
+        "binance": False,
         "label": "HAMA 1h (loss-step)",
         "group": "v31",
         "chart_tf": "1h",
@@ -153,6 +156,7 @@ STRATEGIES = [
     },
     {
         "id": "sol1m_morning",
+        "binance": False,
         "label": "SOL 1m Morning HAMA",
         "group": "v31",
         "chart_tf": "15m",

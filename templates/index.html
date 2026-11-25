@@ -19,18 +19,18 @@
 
   <form class="controls" method="post" action="/">
     <label>
-      <span>Strategy</span>
-      <select name="strategy">
-        {% for item in strategies %}
-        <option value="{{ item.id }}" {% if form.strategy == item.id %}selected{% endif %}>{{ item.label }}</option>
+      <span>Account</span>
+      <select name="venue" id="venue">
+        {% for venue in venues %}
+        <option value="{{ venue }}" {% if form.venue == venue %}selected{% endif %}>{{ venue_labels[venue] }} strategies</option>
         {% endfor %}
       </select>
     </label>
     <label>
-      <span>Venue</span>
-      <select name="venue" id="venue">
-        {% for venue in venues %}
-        <option value="{{ venue }}" {% if form.venue == venue %}selected{% endif %}>{{ venue_labels[venue] }}</option>
+      <span>Strategy</span>
+      <select name="strategy">
+        {% for item in strategies %}
+        <option value="{{ item.id }}" {% if form.strategy == item.id %}selected{% endif %}>{{ item.label }}</option>
         {% endfor %}
       </select>
     </label>
