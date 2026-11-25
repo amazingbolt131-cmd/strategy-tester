@@ -593,7 +593,8 @@
           var ot = opn(), q, t;
           for (q = 0; q < ot.length; q++) {
             t = ot[q];
-            if (t._id === key) {
+            // a stop is a basket stop: every open tranche shares the same level (avg -/+ atrd), so close them all at px
+            if (t._id === key || kind === 'sl') {
               t.xb = k; t.xp = px;
               t.why = kind === 'tp' ? ((t.tag === 'LONG' || t.tag === 'SHORT') ? 'TP1' : 'TP2') : 'Stop';
             }

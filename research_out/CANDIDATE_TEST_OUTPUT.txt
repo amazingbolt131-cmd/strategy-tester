@@ -1,0 +1,42 @@
+# Test output on candidate/turtle-basket-stop (exact patched build)
+
+## node --test js/research/turtle_patch.test.js
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 59.032132
+
+## node --test js/research/fixtures.test.js
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 82.44425
+
+## pytest (full suite)
+...............F......F...                                               [100%]
+=================================== FAILURES ===================================
+_________________ test_venue_cards_and_binance_only_strategies _________________
+tests/test_risk.py:42: in test_venue_cards_and_binance_only_strategies
+    resolve_strategy("micro_1h", "binance")
+backtest/config.py:264: in resolve_strategy
+    raise ValueError(f"{base['label']} runs on {other} only")
+E   ValueError: Pivex Micro · 1h runs on Pivex only
+________ test_grid_strategies_are_binance_only_and_the_rest_run_on_both ________
+tests/test_v31.py:42: in test_grid_strategies_are_binance_only_and_the_rest_run_on_both
+    assert venue_enabled(strategy, "binance")
+E   AssertionError: assert False
+E    +  where False = venue_enabled({'id': 'micro_1h', 'binance': False, 'label': 'Pivex Micro · 1h', 'group': 'v31', ...}, 'binance')
+=========================== short test summary info ============================
+FAILED tests/test_risk.py::test_venue_cards_and_binance_only_strategies - Val...
+FAILED tests/test_v31.py::test_grid_strategies_are_binance_only_and_the_rest_run_on_both
+2 failed, 24 passed in 0.29s
+
+Venue-test failure bodies are IDENTICAL to fe1f7b2 baseline.

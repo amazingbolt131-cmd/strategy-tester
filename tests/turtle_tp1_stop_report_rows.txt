@@ -1,0 +1,10 @@
+# tester report rows (run.js turtle() + settle + _book_from_engine + run_backtest trade list)
+# engine fees: TP1 4.181000000000  Stop 3.886685552408
+
+n=1  Long  LONG → TP1  entry=2026-01-05 00:10 @ 100.0  exit=2026-01-05 00:35 @ 109.05  qty=50.0  fee=4.180999999999983  pnl=448.3189999999999
+n=2  Long  LONG_ADD → Stop  entry=2026-01-05 00:20 @ 105.9  exit=2026-01-05 00:45 @ 99.9  qty=47.21435316336166  fee=3.8866855524079256  pnl=-287.17280453257786
+
+#,Type,Entry time,Entry price,Exit time,Exit price,Signal,Size,PnL $,PnL %,Cumulative PnL,Run-up,Drawdown
+1,Long,2026-01-05 00:10,100.00000000,2026-01-05 00:35,109.05000000,LONG → TP1,50.00000000,448.3190,8.9664,448.3190,0.0000,0.0000
+2,Long,2026-01-05 00:20,105.90000000,2026-01-05 00:45,99.90000000,LONG_ADD → Stop,47.21435316,-287.1728,-5.7435,161.1462,0.0000,0.0000
+
