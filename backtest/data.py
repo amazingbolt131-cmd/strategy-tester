@@ -82,6 +82,25 @@ def test_window(last_day: date | None = None) -> tuple[int, int, int]:
     return warmup_ms, start_ms, end_ms
 
 
+# Ranking default: one full year. The user explicitly opened this window,
+# including the former 2026-07-01 to 2026-10-25 holdout, for Ranking only.
+# Run and Start still use test_window() (last 30 published days).
+RANKING_START = datetime(2025, 11, 25, tzinfo=timezone.utc)
+RANKING_END = datetime(2026, 11, 25, tzinfo=timezone.utc)
+RANKING_WINDOW_LABEL = (
+    "2025-11-25 00:00 → 2026-11-25 00:00 UTC · 1 year · "
+    "includes the former 2026-07-01 to 2026-10-25 holdout"
+)
+
+
+def ranking_window() -> tuple[int, int, int]:
+    """Warmup + 1-year Ranking window [2025-11-25, 2026-11-25) UTC."""
+    start_ms = int(RANKING_START.timestamp() * 1000)
+    end_ms = int(RANKING_END.timestamp() * 1000)
+    warmup_ms = start_ms - WARMUP_DAYS * 24 * 60 * 60 * 1000
+    return warmup_ms, start_ms, end_ms
+
+
 def _cache_path(symbol: str, day: date) -> Path:
     return CACHE / f"{symbol}-1m-{day:%Y-%m-%d}.csv"
 
@@ -145,7 +164,7 @@ def _read_day(path: Path) -> Bars:
     )
 
 
-def load_1m(symbol: str, start_ms: int, end_ms: int) -> Bars:
+def load_1m(symbol: str, start_ms: int, end_ms: int, skip_missing_days: bool = False) -> Bars:
     """1m bars covering [start_ms, end_ms). Cached on disk and in memory."""
     key = (symbol, start_ms, end_ms)
     with _LOCK:
@@ -174,13 +193,25 @@ def load_1m(symbol: str, start_ms: int, end_ms: int) -> Bars:
         days.append(day)
         day += timedelta(days=1)
 
-    missing = [d for d in days if not _cache_path(symbol, d).exists()]
+    missing = [d for d in days if not (_cache_path(symbol, d).exists() and _cache_path(symbol, d).stat().st_size > 0)]
     if missing:
         workers = min(12, len(missing))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(_download_day, symbol, d) for d in missing]
+            futures = {pool.submit(_download_day, symbol, d): d for d in missing}
             for future in as_completed(futures):
-                future.result()
+                day = futures[future]
+                try:
+                    future.result()
+                except RuntimeError as exc:
+                    if skip_missing_days and "HTTP 404" in str(exc):
+                        continue
+                    raise
+
+    existing = [d for d in days if _cache_path(symbol, d).exists() and _cache_path(symbol, d).stat().st_size > 0]
+    if skip_missing_days:
+        days = existing
+    if not days:
+        raise RuntimeError(f"No 1m futures bars for {symbol}")
 
     parts = [_read_day(_cache_path(symbol, d)) for d in days]
     bars = Bars(
@@ -274,6 +305,6 @@ def align_asof(published_ms: np.ndarray, values: np.ndarray, target_ms: np.ndarr
 TF_MINUTES = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440}
 
 
-def load_tf(symbol: str, timeframe: str, start_ms: int, end_ms: int) -> Bars:
-    base = load_1m(symbol, start_ms, end_ms)
+def load_tf(symbol: str, timeframe: str, start_ms: int, end_ms: int, skip_missing_days: bool = False) -> Bars:
+    base = load_1m(symbol, start_ms, end_ms, skip_missing_days=skip_missing_days)
     return resample(base, TF_MINUTES[timeframe])

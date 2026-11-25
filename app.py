@@ -27,7 +27,7 @@ from backtest.config import (
     symbols_for,
     venue_enabled,
 )
-from backtest.ranking import ranking_plan, run_ranking
+from backtest.ranking import annotate_suspect_rows, default_ranking_report, ranking_plan, run_ranking
 from backtest.runner import run_backtest
 from backtest.sweep import combo_plan, run_sweep
 
@@ -505,6 +505,60 @@ def ranking_status(job_id: str):
             "report": job["report"] if job["status"] == "done" else None,
         }
     return jsonify(payload)
+
+
+@app.route("/ranking/latest")
+def ranking_latest():
+    """Latest finished ranking, or a running job's progress, else the bundled default."""
+    with _SWEEP_LOCK:
+        jobs = list(_RANK_JOBS.values())
+    running = [job for job in jobs if job["status"] in ("queued", "running")]
+    if running:
+        job = max(running, key=lambda item: item["started_at"])
+        elapsed = job["elapsed_s"]
+        if job["status"] in ("queued", "running"):
+            elapsed = round(time.monotonic() - job["started_at"], 1)
+        return jsonify({
+            "source": "job",
+            "job_id": job["job_id"],
+            "status": job["status"],
+            "done": job["done"],
+            "total": job["total"],
+            "current": job["current"],
+            "elapsed_s": elapsed,
+            "error": job["error"],
+            "report": None,
+        })
+    done = [job for job in jobs if job["status"] == "done" and job.get("report")]
+    if done:
+        job = max(done, key=lambda item: item["started_at"])
+        report = annotate_suspect_rows(job["report"])
+        report.setdefault("source", "job")
+        report.setdefault("source_label", "Latest finished Rank job on this server")
+        return jsonify({
+            "source": "job",
+            "job_id": job["job_id"],
+            "status": "done",
+            "done": job["done"],
+            "total": job["total"],
+            "current": job["current"],
+            "elapsed_s": job["elapsed_s"],
+            "error": None,
+            "report": report,
+        })
+    report = default_ranking_report()
+    return jsonify({
+        "source": "precomputed",
+        "job_id": None,
+        "status": "done",
+        "done": report.get("summary", {}).get("total_combos"),
+        "total": report.get("summary", {}).get("total_combos"),
+        "current": "Precomputed default",
+        "elapsed_s": report.get("summary", {}).get("elapsed_s"),
+        "error": None,
+        "report": report,
+    })
+
 
 
 if __name__ == "__main__":

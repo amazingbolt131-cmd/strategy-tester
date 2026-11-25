@@ -170,7 +170,7 @@ def test_run_ranking_uses_native_timeframes_and_default_window():
         }
 
     window = (1, 2, 3)
-    with patch("backtest.ranking.test_window", return_value=window), patch(
+    with patch("backtest.ranking.ranking_window", return_value=window), patch(
         "backtest.ranking.run_backtest", side_effect=fake_run
     ):
         report = run_ranking(10_000, 0.04, 0.0, True)
@@ -184,6 +184,7 @@ def test_run_ranking_uses_native_timeframes_and_default_window():
         assert "timeframe" not in kwargs
         assert "tf" not in kwargs
         assert kwargs["include_chart"] is False
+        assert kwargs["skip_missing_days"] is True
         assert kwargs["k"] == 8.0
     for _strategy_id, _symbol, kwargs in morning:
         assert kwargs.get("profit_target") == 1000.0
@@ -259,3 +260,42 @@ def _row(venue, strategy_id, symbol, net, pf, trades):
         },
         "error": None,
     }
+
+def test_ranking_window_is_one_year_utc():
+    from datetime import datetime, timezone
+    from backtest.data import RANKING_WINDOW_LABEL, ranking_window
+
+    warmup, start, end = ranking_window()
+    assert datetime.fromtimestamp(start / 1000, tz=timezone.utc) == datetime(2025, 11, 25, tzinfo=timezone.utc)
+    assert datetime.fromtimestamp(end / 1000, tz=timezone.utc) == datetime(2026, 11, 25, tzinfo=timezone.utc)
+    assert start - warmup == 40 * 24 * 60 * 60 * 1000
+    assert "former 2026-07-01 to 2026-10-25 holdout" in RANKING_WINDOW_LABEL
+
+
+def test_ranking_latest_returns_bundled_default(monkeypatch):
+    from backtest import ranking as ranking_mod
+
+    fake = {
+        "window_label": ranking_mod.RANKING_WINDOW_LABEL,
+        "source": "bundled_default",
+        "source_label": "precomputed test",
+        "settings": {"balance": 10000, "native_timeframes": NATIVE_TF_NOTE},
+        "universe": {},
+        "summary": {"total_combos": 303, "completed_combos": 303, "failed_combos": 0, "strategies_ranked": 14, "elapsed_s": 1},
+        "ranked": [{"rank": 1, "strategy_id": "s5_15m", "venue": "pivex", "symbol": "LTCUSDT", "stats": {"net_profit": 1}}],
+        "all_results": [],
+        "suspect_warnings": [],
+    }
+    monkeypatch.setattr("app.default_ranking_report", lambda: fake)
+    # No in-memory jobs
+    monkeypatch.setattr("app._RANK_JOBS", {})
+    client = app.test_client()
+    resp = client.get("/ranking/latest")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "done"
+    assert body["source"] == "precomputed"
+    assert body["report"]["ranked"]
+    assert "2025-11-25" in body["report"]["window_label"]
+    assert "holdout" in body["report"]["window_label"]
+

@@ -58,9 +58,9 @@ def _rows(bars) -> list[list[float]]:
     ]
 
 
-def _series(strategy_id: str, symbol: str, warmup: int, end: int) -> dict:
+def _series(strategy_id: str, symbol: str, warmup: int, end: int, skip_missing_days: bool = False) -> dict:
     def tf(sym: str, name: str):
-        return _rows(load_tf(sym, name, warmup, end))
+        return _rows(load_tf(sym, name, warmup, end, skip_missing_days=skip_missing_days))
 
     series: dict = {}
     if strategy_id == "hama_30m":
@@ -116,6 +116,7 @@ def run_engine(
     daily_filter: bool = True,
     series: dict | None = None,
     profit_target: float | None = None,
+    skip_missing_days: bool = False,
 ) -> dict:
     payload = {
         "id": strategy_id,
@@ -125,7 +126,7 @@ def run_engine(
         "end": int(end),
         "k": float(k),
         "daily_filter": bool(daily_filter) and venue == "pivex",
-        "series": series if series is not None else _series(strategy_id, symbol, warmup, end),
+        "series": series if series is not None else _series(strategy_id, symbol, warmup, end, skip_missing_days=skip_missing_days),
     }
     if profit_target is not None:
         payload["profit_target"] = float(profit_target)

@@ -7,6 +7,8 @@ from the v3.1 engine. Timeframes are not swept or overridden.
 from __future__ import annotations
 
 import gc
+import json
+from pathlib import Path
 import re
 import time
 from typing import Callable
@@ -18,7 +20,7 @@ from .config import (
     VENUE_LABELS,
     venue_enabled,
 )
-from .data import test_window
+from .data import RANKING_WINDOW_LABEL, ranking_window
 from .runner import run_backtest
 from .sweep import STRATEGY_SPECS
 
@@ -101,6 +103,94 @@ MORNING_HAMA_TEST_NOTE = (
     "Run and Start still use the official no-target engine. Notional, stop, $600 day bust, and the "
     "08:00 Kyiv day filter are unchanged."
 )
+
+
+SUSPECT_ROWS = {
+    ("ml_5m", "binance", "BIGTIMEUSDT"): (
+        "Tester artifact, not a real result. On a prior window every exit was labeled stop yet "
+        "counted as a win, with an implausible average win versus ML's 3% stop and 3.1% target. "
+        "Ignore this row unless a later inspection clears it."
+    ),
+}
+
+DEFAULT_RANKING_PATH = Path(__file__).resolve().parent.parent / "data" / "ranking_default.json"
+DEFAULT_RANKING_LABEL = (
+    "Precomputed default · local 303-combo run on 25 Nov 2026, 20:31–21:09 Europe/Kiev (35.3 min) · "
+    "1-year window 2025-11-25 00:00 → 2026-11-25 00:00 UTC · includes the former 2026-07-01 to 2026-10-25 holdout · "
+    "$10,000 start, 0.04%/side, 0 slip, daily HAMA on · 301 of 303 combos completed"
+)
+
+_DEFAULT_RANKING: dict | None = None
+
+
+def _ml_artifact_reason(row: dict) -> str | None:
+    """UI-only flag for ML rows whose P&L cannot fit the 3%/3.1% $10k-notional rules."""
+    known = SUSPECT_ROWS.get((row.get("strategy_id"), row.get("venue"), row.get("symbol")))
+    if known:
+        return known
+    if row.get("strategy_id") != "ml_5m" or row.get("error"):
+        return None
+    stats = row.get("stats") or {}
+    avg_win = stats.get("avg_win")
+    avg_loss = stats.get("avg_loss")
+    net = float(stats.get("net_profit") or 0)
+    drawdown = float(stats.get("max_drawdown") or 0)
+    exits = stats.get("exit_reasons") or {}
+    trades = int(stats.get("total_trades") or 0)
+    stop_only = bool(trades and exits.get("SL") == trades)
+    implausible = (
+        (avg_win is not None and avg_win > 2000)
+        or (avg_loss is not None and abs(avg_loss) > 2000)
+        or abs(net) > 100_000
+        or drawdown > 50_000
+        or (stop_only and (stats.get("win_rate") or 0) >= 99)
+    )
+    if not implausible:
+        return None
+    return (
+        "Tester artifact, not a real result. ML's official rules are a 3% stop and 3.1% target "
+        "on a $10,000 notional, so a typical win is about $310. This row's P&L or average win/loss "
+        "is far outside that scale, and some symbols show every exit labeled a stop yet counted as a win. "
+        "Ignore this row."
+    )
+
+
+def annotate_suspect_rows(report: dict) -> dict:
+    """Mark known tester-artifact rows. Does not change engine results."""
+    warnings: list[dict] = []
+    for key in ("ranked", "all_results"):
+        for row in report.get(key) or []:
+            reason = _ml_artifact_reason(row)
+            if not reason:
+                continue
+            row["suspect"] = True
+            row["suspect_reason"] = reason
+            if key == "ranked":
+                warnings.append(
+                    {
+                        "strategy_id": row.get("strategy_id"),
+                        "strategy_label": row.get("strategy_label"),
+                        "venue_label": row.get("venue_label"),
+                        "symbol_label": row.get("symbol_label"),
+                        "reason": reason,
+                    }
+                )
+    report["suspect_warnings"] = warnings
+    return report
+
+
+def default_ranking_report() -> dict:
+    """Bundled finished ranking shown when no in-memory job is available."""
+    global _DEFAULT_RANKING
+    if _DEFAULT_RANKING is None:
+        with DEFAULT_RANKING_PATH.open() as fh:
+            report = json.load(fh)
+        report["source"] = "precomputed"
+        report["source_label"] = DEFAULT_RANKING_LABEL
+        annotate_suspect_rows(report)
+        _DEFAULT_RANKING = report
+    return _DEFAULT_RANKING
+
 
 NATIVE_TF_NOTE = (
     "Each strategy is run only on its own native signal and execution timeframes "
@@ -292,7 +382,7 @@ def build_ranking(
 ) -> dict:
     ranked = best_per_strategy(rows)
     ok_rows = [row for row in rows if not row.get("error") and row.get("stats")]
-    return {
+    report = {
         "window_label": window_label,
         "settings": {
             "balance": balance,
@@ -319,6 +409,7 @@ def build_ranking(
         "all_results": rows,
         "morning_hama": _morning_hama_section(ranked, rows),
     }
+    return annotate_suspect_rows(report)
 
 
 def run_ranking(
@@ -335,8 +426,8 @@ def run_ranking(
     total = len(exec_order)
     if total == 0:
         raise ValueError("No enabled strategy/symbol combos to rank")
-    window = test_window()
-    window_label = ""
+    window = ranking_window()
+    window_label = RANKING_WINDOW_LABEL
     results_by_idx: dict[int, dict] = {}
 
     for done_idx, item in enumerate(exec_order):
@@ -369,6 +460,7 @@ def run_ranking(
                 k=DEFAULT_K,
                 daily_filter=daily_filter,
                 include_chart=False,
+                skip_missing_days=True,
                 **extra,
             )
             if not window_label:
@@ -397,7 +489,7 @@ def run_ranking(
     ordered_rows = [results_by_idx[item["order_idx"]] for item in canonical]
     return build_ranking(
         ordered_rows,
-        window_label=window_label or "Last 30 published days",
+        window_label=window_label or RANKING_WINDOW_LABEL,
         balance=balance,
         commission=commission,
         slippage=slippage,

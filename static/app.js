@@ -503,7 +503,7 @@
     if (rankingPanel) rankingPanel.hidden = !isRank;
   }
   if (tabSingle) tabSingle.addEventListener("click", function () { showTab("single"); });
-  if (tabRanking) tabRanking.addEventListener("click", function () { showTab("ranking"); });
+  if (tabRanking) tabRanking.addEventListener("click", function () { showTab("ranking"); loadLatestRanking(); });
 
   function setBusy(busy, rankLabel) {
     if (rankBtn) {
@@ -520,7 +520,8 @@
     const uni = report.universe || {};
     if (rankingMeta) {
       rankingMeta.textContent =
-        (report.window_label || "Last 30 published days") +
+        (report.source_label ? report.source_label + " · " : "") +
+        (report.window_label || "1-year Ranking window") +
         " · Starting balance $" + Number(cfg.balance || 0).toLocaleString("en-US", { maximumFractionDigits: 2 }) +
         " · Commission " + cfg.commission + "%/side · Slippage " + cfg.slippage + "%" +
         (cfg.daily_filter ? " · Daily HAMA filter ON" : " · Daily HAMA filter OFF") +
@@ -539,9 +540,11 @@
       const tested = includeTested
         ? '<td data-value="' + (r.symbols_tested || 0) + '">' + (r.completed_symbols || 0) + " / " + (r.symbols_tested || 0) + "</td>"
         : "";
-      return "<tr>" +
+      const suspect = !!(r.suspect || (r.strategy_id === "ml_5m" && r.venue === "binance" && r.symbol === "BIGTIMEUSDT"));
+      const suspectTag = suspect ? '<span class="suspect-tag">Suspect — tester bug, ignore</span>' : "";
+      return "<tr" + (suspect ? ' class="suspect"' : "") + ">" +
         '<td data-value="' + r.rank + '">' + r.rank + "</td>" +
-        '<td data-value="' + esc(r.strategy_label) + '">' + esc(r.strategy_label) + "</td>" +
+        '<td data-value="' + esc(r.strategy_label) + '">' + esc(r.strategy_label) + suspectTag + "</td>" +
         '<td data-value="' + esc(r.venue_label) + '">' + esc(r.venue_label) + "</td>" +
         '<td data-value="' + esc(r.symbol_label) + '">' + esc(r.symbol_label) + "</td>" +
         tested +
@@ -576,8 +579,25 @@
       "<th data-type=\"text\" class=\"rank-text\">TP</th><th data-type=\"text\" class=\"rank-text\">SL</th>" +
       "<th data-type=\"text\" class=\"rank-text\">Indicators</th>";
 
-    let html = '<p class="muted">' + esc(uni.binance_source || "") + " " + esc(uni.pivex_note || "") +
-      " Best symbol is the highest net profit on the default 30-day window, then PF, then trade count. Click a column header to sort. Default order is PF, then net return.</p>";
+    let html = '<p class="muted">' + esc(report.source_label || "") + "</p>";
+    html += '<p class="muted">' + esc(uni.binance_source || "") + " " + esc(uni.pivex_note || "") +
+      " Best symbol is the highest net profit in the 1-year window, then PF, then trade count. " +
+      "This window includes the former 2026-07-01 to 2026-10-25 holdout. Click a column header to sort. Default order is PF, then net return. " +
+      "A fresh Rank press on the live free plan may take too long for a full year; this tab loads the precomputed 1-year results.</p>";
+    const warnings = report.suspect_warnings || [];
+    if (!warnings.length && (report.ranked || []).some(function (r) { return r.suspect || (r.strategy_id === "ml_5m" && r.venue === "binance" && r.symbol === "BIGTIMEUSDT"); })) {
+      warnings.push({
+        strategy_label: "ML Lorentz · 5m",
+        venue_label: "Binance",
+        symbol_label: "BIGTIME",
+        reason: "Tester artifact, not a real result. All exits are labeled stop yet counted as wins, with an implausible average win versus ML's 3% stop and 3.1% target. Ignore this row."
+      });
+    }
+    warnings.forEach(function (w) {
+      html += '<div class="banner warn suspect-banner" role="status"><strong>Suspect row: ' +
+        esc((w.venue_label || "") + " · " + (w.strategy_label || "") + " · " + (w.symbol_label || "")) +
+        "</strong> — " + esc(w.reason || "") + "</div>";
+    });
 
     const mh = report.morning_hama;
     if (mh) {
@@ -668,9 +688,51 @@
 
   function startRankingPoll(jobId, total) {
     if (rankingTimer) { clearInterval(rankingTimer); rankingTimer = null; }
-    if (rankingCount) rankingCount.textContent = "0 / " + total;
+    if (rankingCount) rankingCount.textContent = "0 / " + (total || 303);
     rankingTimer = setInterval(function () { pollRanking(jobId); }, 1500);
     pollRanking(jobId);
+  }
+
+  let latestLoaded = false;
+  function showLoading() {
+    if (rankingReportEl && rankingReportEl.hidden) {
+      rankingReportEl.hidden = false;
+      rankingReportEl.innerHTML = '<p class="muted">Loading ranking…</p>';
+    }
+  }
+  function applyLatest(d) {
+    if (!d) return;
+    if (d.status === "queued" || d.status === "running") {
+      if (rankingProgressWrap) rankingProgressWrap.hidden = false;
+      const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
+      if (rankingCount) rankingCount.textContent = (d.done || 0) + " / " + (d.total || 303) + " (" + pct + "%) · " + Number(d.elapsed_s || 0).toFixed(1) + "s";
+      if (rankingStatusText) rankingStatusText.textContent = d.current || "Running…";
+      if (rankingBar) rankingBar.style.width = pct + "%";
+      if (d.job_id) startRankingPoll(d.job_id, d.total);
+      return;
+    }
+    if (d.report) {
+      if (rankingProgressWrap) rankingProgressWrap.hidden = true;
+      renderRanking(d.report);
+      latestLoaded = true;
+    }
+  }
+  function loadLatestRanking() {
+    if (rankingTimer) return;
+    if (latestLoaded && rankingReportEl && !rankingReportEl.hidden) return;
+    showLoading();
+    fetch("/ranking/latest")
+      .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error((res.data && res.data.error) || "Failed to load ranking");
+        applyLatest(res.data);
+      })
+      .catch(function (err) {
+        if (rankingError) {
+          rankingError.textContent = String(err && err.message ? err.message : err);
+          rankingError.hidden = false;
+        }
+      });
   }
 
   if (rankBtn) {
@@ -718,12 +780,33 @@
 
   try {
     const existing = sessionStorage.getItem("rankingJobId");
-    if (existing && rankingPanel) {
-      showTab("ranking");
-      if (rankingProgressWrap) rankingProgressWrap.hidden = false;
-      startRankingPoll(existing, 308);
+    if (existing) {
+      fetch("/ranking/" + encodeURIComponent(existing))
+        .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+        .then(function (res) {
+          if (res.ok && res.data && (res.data.status === "queued" || res.data.status === "running")) {
+            startRankingPoll(existing, res.data.total);
+            return;
+          }
+          if (res.ok && res.data && res.data.status === "done" && res.data.report) {
+            try { sessionStorage.removeItem("rankingJobId"); } catch (e2) { /* noop */ }
+            renderRanking(res.data.report);
+            latestLoaded = true;
+            return;
+          }
+          try { sessionStorage.removeItem("rankingJobId"); } catch (e2) { /* noop */ }
+          loadLatestRanking();
+        })
+        .catch(function () {
+          try { sessionStorage.removeItem("rankingJobId"); } catch (e2) { /* noop */ }
+          loadLatestRanking();
+        });
+    } else {
+      loadLatestRanking();
     }
-  } catch (e) { /* noop */ }
+  } catch (e) {
+    loadLatestRanking();
+  }
 
 
   const payload = document.getElementById("chart-data");
