@@ -67,7 +67,7 @@ def latest_published_day(symbol: str = "BTCUSDT") -> date:
     raise RuntimeError("No recent Binance futures kline files were published")
 
 
-def test_window(last_day: date | None = None) -> tuple[int, int, int]:
+def test_window(last_day: date | None = None, days: int | None = None) -> tuple[int, int, int]:
     """Return warmup_start_ms, test_start_ms, test_end_ms (end exclusive).
 
     The test is the TEST_DAYS UTC days ending at the close of the last published day.
@@ -75,7 +75,7 @@ def test_window(last_day: date | None = None) -> tuple[int, int, int]:
     last_day = last_day or latest_published_day()
     end = datetime(last_day.year, last_day.month, last_day.day, tzinfo=timezone.utc) + timedelta(days=1)
     end_ms = int(end.timestamp() * 1000)
-    start_ms = end_ms - TEST_DAYS * 24 * 60 * 60 * 1000
+    start_ms = end_ms - int(days or TEST_DAYS) * 24 * 60 * 60 * 1000
     warmup_ms = start_ms - WARMUP_DAYS * 24 * 60 * 60 * 1000
     return warmup_ms, start_ms, end_ms
 

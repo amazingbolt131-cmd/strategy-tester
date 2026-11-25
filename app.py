@@ -6,6 +6,7 @@ import csv
 import io
 import traceback
 
+from backtest.data import test_window
 from flask import Flask, Response, render_template, request
 
 from backtest.config import (
@@ -79,6 +80,9 @@ def _metrics(stats: dict) -> list[dict]:
     ]
 
 
+PERIODS = {"30": "1 month", "91": "3 months", "182": "6 months"}
+
+
 def _form() -> dict:
     strategy = request.form.get("strategy", STRATEGIES[0]["id"])
     if strategy not in STRATEGY_BY_ID:
@@ -100,6 +104,7 @@ def _form() -> dict:
         "strategy": strategy,
         "venue": venue,
         "symbol": symbol,
+        "period": request.form.get("period", "30") if request.form.get("period", "30") in PERIODS else "30",
         "balance": request.form.get("balance", str(int(DEFAULT_BALANCE))),
         "commission": request.form.get("commission", str(DEFAULT_COMMISSION_PCT)),
         "slippage": request.form.get("slippage", str(DEFAULT_SLIPPAGE_PCT)),
@@ -208,6 +213,7 @@ def index():
                 venue=form["venue"],
                 k=k,
                 daily_filter=bool(form["daily_hama"]),
+                window=test_window(days=int(form["period"])),
             )
             metrics = _metrics(result["stats"])
             LAST["result"] = result
@@ -217,6 +223,7 @@ def index():
     return render_template(
         "index.html",
         strategies=STRATEGIES,
+        periods=PERIODS,
         symbols=SYMBOLS,
         symbol_choices=[(sid, SYMBOLS[sid]) for sid in symbols_for(form["strategy"], form["venue"])],
         venues=VENUE_ORDER,
