@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 from .config import DEFAULT_K
@@ -51,11 +52,72 @@ def pivex_size(key: str, k: float) -> float:
     return UNIT[key] * WEIGHTS[key] * k
 
 
-def _rows(bars) -> list[list[float]]:
-    return [
-        [int(t), float(o), float(h), float(l), float(c)]
-        for t, o, h, l, c in zip(bars.open_time, bars.open, bars.high, bars.low, bars.close)
-    ]
+class _Rows:
+    """Bars sent to node as [[open_ms, o, h, l, c], ...] without building Python lists.
+
+    A year of 1m candles as nested Python lists plus one big json.dumps string
+    peaked at well over 200 MB, which is what broke 1-year 1m runs on the 512 MB
+    server. The rows are written straight to a temp file in chunks instead. The
+    text is identical to json.dumps of the old lists (ints, then float repr).
+    """
+
+    __slots__ = ("bars",)
+
+    def __init__(self, bars) -> None:
+        self.bars = bars
+
+    def __len__(self) -> int:
+        return len(self.bars)
+
+    def to_list(self) -> list[list[float]]:
+        b = self.bars
+        return [
+            [int(t), float(o), float(h), float(l), float(c)]
+            for t, o, h, l, c in zip(b.open_time, b.open, b.high, b.low, b.close)
+        ]
+
+    def write(self, fh, chunk: int = 20_000) -> None:
+        b = self.bars
+        n = len(b)
+        fh.write("[")
+        for lo in range(0, n, chunk):
+            hi = min(n, lo + chunk)
+            parts = [
+                "[%d, %r, %r, %r, %r]" % (int(t), float(o), float(h), float(l), float(c))
+                for t, o, h, l, c in zip(b.open_time[lo:hi], b.open[lo:hi], b.high[lo:hi], b.low[lo:hi], b.close[lo:hi])
+            ]
+            if lo:
+                fh.write(", ")
+            fh.write(", ".join(parts))
+        fh.write("]")
+
+
+def _rows(bars) -> _Rows:
+    return _Rows(bars)
+
+
+def _write_json(fh, obj) -> None:
+    """json.dump that streams _Rows values; same text as json.dumps on plain lists."""
+    if isinstance(obj, _Rows):
+        obj.write(fh)
+    elif isinstance(obj, dict):
+        fh.write("{")
+        for i, (k, v) in enumerate(obj.items()):
+            if i:
+                fh.write(", ")
+            fh.write(json.dumps(str(k)))
+            fh.write(": ")
+            _write_json(fh, v)
+        fh.write("}")
+    elif isinstance(obj, (list, tuple)) and any(isinstance(v, (_Rows, dict, list, tuple)) for v in obj):
+        fh.write("[")
+        for i, v in enumerate(obj):
+            if i:
+                fh.write(", ")
+            _write_json(fh, v)
+        fh.write("]")
+    else:
+        fh.write(json.dumps(obj))
 
 
 def _series(strategy_id: str, symbol: str, warmup: int, end: int, skip_missing_days: bool = False) -> dict:
@@ -132,14 +194,19 @@ def run_engine(
     }
     if profit_target is not None:
         payload["profit_target"] = float(profit_target)
-    proc = subprocess.run(
-        [node_executable(), str(RUN_JS)],
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-        timeout=540,
-        check=False,
-    )
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as fh:
+        _write_json(fh, payload)
+        payload = None  # let the series go before node starts
+        fh.flush()
+        fh.seek(0)
+        proc = subprocess.run(
+            [node_executable(), str(RUN_JS)],
+            stdin=fh,
+            capture_output=True,
+            text=True,
+            timeout=float(os.environ.get("ENGINE_TIMEOUT_S", "540")),
+            check=False,
+        )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "node failed").strip()
         raise RuntimeError(detail[-2000:])

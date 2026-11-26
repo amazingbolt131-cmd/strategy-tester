@@ -136,7 +136,7 @@
     <div class="panel-head">
       <div>
         <h2>Strategy strengths</h2>
-        <p class="muted" id="strengths-meta">One run tests every strategy on both Pivex and Binance, on every timeframe it has, for the coin below and the Backtest period, balance, commission, slippage and daily HAMA filter set above. Each runs under its own venue's rules. They are then ranked together across about 20 categories so you can see what each one is good at.</p>
+        <p class="muted" id="strengths-meta">One run tests every strategy on both Pivex and Binance, on every timeframe it has, on each coin you pick (one coin at a time), using the period below and the balance, commission, slippage and daily HAMA filter set above. Each runs under its own venue's rules. You get a table per coin and a cross-coin table that shows on how many coins each strategy is profitable and what it is reliably good at.</p>
       </div>
       <div class="sweep-actions" id="strengths-actions" hidden>
         <a class="export" id="strengths-csv" href="#">Download CSV</a>
@@ -144,15 +144,25 @@
       </div>
     </div>
     <div class="strengths-controls">
+      <fieldset class="strengths-coins" id="strengths-coins">
+        <legend>Coins (pick at least {{ strength_min_symbols }}; each runs every strategy in turn)</legend>
+        {% for coin in strength_coins %}
+        <label class="coin-check"><input type="checkbox" name="strengths-coin" value="{{ coin.id }}" {% if coin.id in strength_default_symbols %}checked{% endif %}> {{ coin.label }}</label>
+        {% endfor %}
+      </fieldset>
       <label>
-        <span>Coin (used for every strategy that offers it)</span>
-        <select id="strengths-coin">
-          {% for coin in strength_coins %}
-          <option value="{{ coin.id }}" {% if form.symbol == coin.id %}selected{% endif %}>{{ coin.label }}</option>
+        <span>Period</span>
+        <select id="strengths-period">
+          {% for pid, meta in periods.items() %}
+          <option value="{{ pid }}" {% if pid == strength_default_period %}selected{% endif %}>{{ meta.label }}</option>
           {% endfor %}
         </select>
       </label>
-      <button type="button" id="start-strengths" class="btn-start">Run strengths</button>
+      <label class="inline-check">
+        <span>Coverage</span>
+        <span><input type="checkbox" id="strengths-all-coins" checked> Every strategy on every picked coin</span>
+      </label>
+      <button type="button" id="start-strengths" class="btn-start" data-min="{{ strength_min_symbols }}">Run strengths</button>
       <label>
         <span>Venue filter</span>
         <select id="strengths-venue">
@@ -162,6 +172,8 @@
         </select>
       </label>
     </div>
+    <p class="muted small" id="strengths-coin-count"></p>
+    <div class="strengths-views" id="strengths-views" hidden></div>
     <div class="progress-wrap" id="strengths-progress-wrap" hidden>
       <div class="progress-head">
         <span id="strengths-status-text">Preparing…</span>

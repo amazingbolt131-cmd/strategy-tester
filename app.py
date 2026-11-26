@@ -32,7 +32,17 @@ from backtest.config import (
 from backtest.ranking import annotate_suspect_rows, default_ranking_report, ranking_plan, run_ranking
 from backtest.data import period_window
 from backtest.runner import run_backtest
-from backtest.strengths import coin_choices, run_strengths, strengths_plan, to_csv as strengths_csv
+from backtest.strengths import (
+    DEFAULT_MULTI_PERIOD as STR_DEFAULT_PERIOD,
+    DEFAULT_SYMBOLS as STR_DEFAULT_SYMBOLS,
+    MIN_SYMBOLS as STR_MIN_SYMBOLS,
+    coin_choices,
+    run_strengths,
+    run_strengths_multi,
+    strengths_plan,
+    to_csv as strengths_csv,
+    to_csv_multi as strengths_csv_multi,
+)
 from backtest.sweep import combo_plan, run_sweep
 
 app = Flask(__name__)
@@ -249,6 +259,9 @@ def _render(form: dict, error, result, metrics):
         strategies=TESTER_STRATEGIES,
         periods=PERIODS,
         strength_coins=coin_choices(),
+        strength_default_symbols=STR_DEFAULT_SYMBOLS,
+        strength_min_symbols=STR_MIN_SYMBOLS,
+        strength_default_period=STR_DEFAULT_PERIOD,
         symbols=SYMBOLS,
         symbol_choices=[(sid, SYMBOLS[sid]) for sid in symbols_for(form["strategy"], form["venue"])],
         venues=VENUE_ORDER,
@@ -396,26 +409,50 @@ def run_view(job_id: str):
 
 @app.route("/strengths/start", methods=["POST"])
 def strengths_start():
-    """One run over every strategy on Pivex and Binance for one coin and period."""
+    """One run over every strategy on Pivex and Binance for one or more coins and a period.
+
+    "symbols" (list, at least 5) runs every coin in turn and adds a cross-coin
+    table. The old single "symbol" field still runs one coin.
+    """
     payload = request.get_json(silent=True) or request.form or {}
+    valid = {c["id"] for c in coin_choices()}
     try:
-        symbol = str(payload.get("symbol", "BTCUSDT"))
-        if symbol not in {c["id"] for c in coin_choices()}:
-            raise ValueError(f"Unknown coin {symbol}")
-        period = _period(payload.get("period"))
+        raw_symbols = payload.get("symbols")
+        if isinstance(raw_symbols, str):
+            raw_symbols = [x for x in raw_symbols.replace(" ", "").split(",") if x]
+        multi = raw_symbols is not None
+        if multi:
+            symbols = list(dict.fromkeys(str(x) for x in raw_symbols))
+            for sym in symbols:
+                if sym not in valid:
+                    raise ValueError(f"Unknown coin {sym}")
+            if len(symbols) < STR_MIN_SYMBOLS:
+                raise ValueError(f"Pick at least {STR_MIN_SYMBOLS} coins (you picked {len(symbols)}).")
+        else:
+            symbol = str(payload.get("symbol", "BTCUSDT"))
+            if symbol not in valid:
+                raise ValueError(f"Unknown coin {symbol}")
+            symbols = [symbol]
+        period = _period(payload.get("period", STR_DEFAULT_PERIOD if multi else None))
         balance = float(payload.get("balance", DEFAULT_BALANCE))
         commission = float(payload.get("commission", DEFAULT_COMMISSION_PCT))
         slippage = float(payload.get("slippage", DEFAULT_SLIPPAGE_PCT))
         raw_daily = payload.get("daily_hama", DEFAULT_DAILY_FILTER)
         daily_filter = raw_daily in (True, 1, "1", "true", "True")
+        raw_all = payload.get("all_coins", multi)
+        all_coins = raw_all in (True, 1, "1", "true", "True")
         if balance <= 0:
             raise ValueError("Starting balance must be positive")
         if commission < 0 or slippage < 0:
             raise ValueError("Commission and slippage cannot be negative")
     except (TypeError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
-    rows, skipped = strengths_plan(symbol)
-    total = len(rows)
+    total = 0
+    skipped_n = 0
+    for sym in symbols:
+        rows, skipped = strengths_plan(sym, all_coins=all_coins)
+        total += len(rows)
+        skipped_n += len(skipped)
     job_id = uuid.uuid4().hex[:12]
     with _SWEEP_LOCK:
         for existing in _STR_JOBS.values():
@@ -426,12 +463,13 @@ def strengths_start():
             "status": "queued",
             "done": 0,
             "total": total,
-            "skipped": len(skipped),
+            "skipped": skipped_n,
             "current": "Waiting for other heavy jobs…",
             "started_at": time.monotonic(),
             "elapsed_s": 0.0,
             "error": None,
             "report": None,
+            "partial": [],
             "cancelled": False,
         }
         while len(_STR_JOBS) > _MAX_JOBS:
@@ -464,15 +502,28 @@ def strengths_start():
                     j = _STR_JOBS.get(job_id)
                     return bool(not j or j["cancelled"])
 
-            try:
-                report = run_strengths(
-                    symbol, period, balance, commission, slippage, daily_filter,
-                    progress_cb=_progress, cancel_check=_is_cancelled,
-                )
+            def _symbol_done(rep: dict) -> None:
                 with _SWEEP_LOCK:
                     j = _STR_JOBS.get(job_id)
                     if j:
-                        j.update(status="done", done=total, current="Complete", report=report,
+                        j["partial"].append(rep["symbol_label"])
+
+            try:
+                if multi:
+                    report = run_strengths_multi(
+                        symbols, period, balance, commission, slippage, daily_filter,
+                        progress_cb=_progress, cancel_check=_is_cancelled, all_coins=all_coins,
+                        on_symbol_done=_symbol_done,
+                    )
+                else:
+                    report = run_strengths(
+                        symbols[0], period, balance, commission, slippage, daily_filter,
+                        progress_cb=_progress, cancel_check=_is_cancelled, all_coins=all_coins,
+                    )
+                with _SWEEP_LOCK:
+                    j = _STR_JOBS.get(job_id)
+                    if j:
+                        j.update(status="done", done=j["total"], current="Complete", report=report,
                                  elapsed_s=round(time.monotonic() - j["started_at"], 1))
             except Exception as exc:  # noqa: BLE001
                 traceback.print_exc()
@@ -484,7 +535,7 @@ def strengths_start():
                         j["elapsed_s"] = round(time.monotonic() - j["started_at"], 1)
 
     threading.Thread(target=_worker, daemon=True).start()
-    return jsonify({"job_id": job_id, "total": total, "skipped": len(skipped)}), 202
+    return jsonify({"job_id": job_id, "total": total, "skipped": skipped_n, "symbols": symbols, "period": period}), 202
 
 
 @app.route("/strengths/<job_id>")
@@ -497,6 +548,7 @@ def strengths_status(job_id: str):
         if job["status"] in ("queued", "running"):
             elapsed = round(time.monotonic() - job["started_at"], 1)
         payload = {k: job[k] for k in ("job_id", "status", "done", "total", "skipped", "current", "error")}
+        payload["coins_done"] = list(job.get("partial") or [])
         payload["elapsed_s"] = elapsed
         payload["report"] = job["report"] if job["status"] == "done" else None
     return jsonify(payload)
@@ -513,8 +565,13 @@ def strengths_csv_download(job_id: str):
     report = _strengths_report(job_id)
     if not report:
         return Response("Report not ready.\n", status=404, mimetype="text/plain")
-    name = f"strengths-{report['symbol']}-{report['period']}.csv"
-    return Response(strengths_csv(report), mimetype="text/csv",
+    if report.get("multi"):
+        name = f"strengths-{len(report['symbols'])}coins-{report['period']}.csv"
+        body = strengths_csv_multi(report)
+    else:
+        name = f"strengths-{report['symbol']}-{report['period']}.csv"
+        body = strengths_csv(report)
+    return Response(body, mimetype="text/csv",
                     headers={"Content-Disposition": f"attachment; filename={name}"})
 
 
@@ -523,7 +580,8 @@ def strengths_json_download(job_id: str):
     report = _strengths_report(job_id)
     if not report:
         return Response("Report not ready.\n", status=404, mimetype="text/plain")
-    name = f"strengths-{report['symbol']}-{report['period']}.json"
+    name = (f"strengths-{len(report['symbols'])}coins-{report['period']}.json" if report.get("multi")
+            else f"strengths-{report['symbol']}-{report['period']}.json")
     resp = jsonify(report)
     resp.headers["Content-Disposition"] = f"attachment; filename={name}"
     return resp

@@ -433,3 +433,13 @@ tr.suspect { background: rgba(255, 193, 7, 0.08); }
 .strength-card h4 { margin: 0 0 4px; font-size: 14px; }
 .strength-card ul { margin: 4px 0 8px; padding-left: 18px; }
 .strength-card .small { font-size: 11px; }
+.strengths-coins { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px; padding: 6px 10px; display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: 760px; }
+.strengths-coins legend { font-size: 12px; color: var(--muted, #9aa0ab); padding: 0 4px; }
+.strengths-coins .coin-check { font-size: 13px; white-space: nowrap; cursor: pointer; }
+.strengths-controls .inline-check span:last-child { font-size: 13px; color: inherit; }
+.strengths-views { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.strengths-views .view-btn { background: transparent; border: 1px solid rgba(255, 255, 255, 0.15); color: inherit; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.strengths-views .view-btn.active { background: rgba(80, 160, 255, 0.18); border-color: rgba(80, 160, 255, 0.6); }
+#strengths-agg-table td, #strengths-agg-table th { white-space: nowrap; }
+#strengths-agg-table td:last-child { white-space: normal; min-width: 520px; font-size: 11px; line-height: 1.7; }
+#strengths-agg-table td:nth-last-child(2) { font-size: 11px; }

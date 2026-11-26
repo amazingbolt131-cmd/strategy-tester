@@ -272,6 +272,12 @@ def load_1m(symbol: str, start_ms: int, end_ms: int, skip_missing_days: bool = F
     return bars
 
 
+def clear_memo() -> None:
+    """Drop the in-memory 1m cache (the disk cache stays). Used between coins."""
+    with _LOCK:
+        _MEMO.clear()
+
+
 def resample(bars: Bars, minutes: int) -> Bars:
     if minutes <= 1:
         return bars
