@@ -138,3 +138,15 @@ def test_page_has_multi_coin_controls():
     for sym in S.DEFAULT_SYMBOLS:
         assert f'value="{sym}" checked' in html
     assert '<option value="1y" selected' in html
+
+
+def test_ml_rows_under_50_cents_are_left_out_of_the_aggregate():
+    reps = [_rep(sym, [("binance:ml_5m", _m(n))]) for sym, n in
+            [("BTCUSDT", 100), ("ETHUSDT", 200), ("SOLUSDT", 300), ("XRPUSDT", 400), ("DOGEUSDT", -5_000_000)]]
+    reps[-1]["rows"][0]["ml_low_price"] = True
+    agg = S.aggregate_reports(reps)
+    row = agg["rows"][0]
+    assert row["metrics"]["coins_run"] == 4 and row["metrics"]["total_net"] == 1000
+    assert row["excluded_coins"] == ["DOG"]
+    assert any("Left out of the cross-coin numbers" in w for w in row["weak"])
+    assert [p["excluded"] for p in row["per_coin"]] == [False] * 4 + [True]

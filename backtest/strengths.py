@@ -656,7 +656,9 @@ def aggregate_reports(reports: list[dict]) -> dict:
     for key in order:
         items = by_key[key]
         first = items[0][1]
-        ok = [(rep, r) for rep, r in items if r.get("metrics")]
+        # ML Lorentz rows on coins under $0.50 are known-bad, so they are kept in the
+        # per-coin table but left out of the cross-coin numbers.
+        ok = [(rep, r) for rep, r in items if r.get("metrics") and not r.get("ml_low_price")]
         failed = [{"symbol": r["symbol"], "symbol_label": r["symbol_label"], "error": r.get("error")} for rep, r in items if not r.get("metrics")]
         ms = [r["metrics"] for _, r in ok]
         labels = [r["symbol_label"] for _, r in ok]
@@ -731,6 +733,7 @@ def aggregate_reports(reports: list[dict]) -> dict:
                 "trades": m.get("trades"),
                 "score": r.get("score"),
                 "off_list": bool(r.get("off_list")),
+                "excluded": bool(r.get("ml_low_price")),
                 "error": r.get("error"),
             })
             for b in r.get("badges") or []:
@@ -748,6 +751,7 @@ def aggregate_reports(reports: list[dict]) -> dict:
             "badge_coins": badge_coins,
             "off_list_coins": [r["symbol_label"] for _, r in items if r.get("off_list")],
             "ml_low_price_coins": [r["symbol_label"] for _, r in items if r.get("ml_low_price")],
+            "excluded_coins": [r["symbol_label"] for _, r in items if r.get("metrics") and r.get("ml_low_price")],
         })
     leaders = _score_aggregate(agg_rows)
     return {"rows": agg_rows, "leaders": leaders}
@@ -811,7 +815,7 @@ def _score_aggregate(rows: list[dict]) -> list[dict]:
         if r["venue"] == "pivex" and a["pivex_dd_breaches"]:
             r["weak"].append(f"Hit Pivex's $600 drawdown on {a['pivex_dd_breaches']} of {n} coins")
         if r.get("ml_low_price_coins"):
-            r["weak"].append(ML_LOW_PRICE_NOTE + " Affected: " + ", ".join(r["ml_low_price_coins"]))
+            r["weak"].append(ML_LOW_PRICE_NOTE + " Left out of the cross-coin numbers: " + ", ".join(r["ml_low_price_coins"]))
         if a["total_trades"] >= MIN_TRADES:
             if n and a["profitable"] == n:
                 r["good_extra"].append(f"Profitable on all {n} coins")

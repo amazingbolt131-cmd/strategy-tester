@@ -152,7 +152,7 @@
       }
       const perCoin = (r.per_coin || []).map(function (p) {
         if (p.error) return '<span class="neg" title="' + esc(p.error) + '">' + esc(p.symbol_label) + " failed</span>";
-        return '<span class="' + tone(p.net_profit) + '"' + (p.off_list ? ' title="not a live coin for this strategy"' : "") + ">" + esc(p.symbol_label) + (p.off_list ? "*" : "") + " " + money(p.net_profit, true) + "</span>";
+        return '<span class="' + tone(p.net_profit) + '"' + (p.off_list ? ' title="not a live coin for this strategy"' : "") + ">" + esc(p.symbol_label) + (p.off_list ? "*" : "") + " " + money(p.net_profit, true) + (p.excluded ? ' <span class="muted" title="ML Lorentz under $0.50: left out of the cross-coin numbers">(excluded)</span>' : "") + "</span>";
       }).join(" · ");
       html += cell(r.score, String(r.score)) +
         cell(a.profitable_share, a.profitable + " / " + a.coins_run + (a.coins_failed ? ' <span class="neg">(' + a.coins_failed + " failed)</span>" : ""), a.profitable > a.coins_run / 2 ? "pos" : "neg") +
