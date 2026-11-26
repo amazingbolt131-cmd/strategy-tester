@@ -864,6 +864,8 @@ def run_strengths_multi(
     _, start, end = window
     plans = [strengths_plan(sym, all_coins=all_coins)[0] for sym in symbols]
     grand = sum(len(p) for p in plans)
+    clear_memo()
+    gc.collect()
     done_before = 0
     reports = []
     for idx, sym in enumerate(symbols):
