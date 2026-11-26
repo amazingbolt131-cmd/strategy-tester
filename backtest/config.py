@@ -55,6 +55,14 @@ SYMBOLS = {
     "VVVUSDT": {"label": "VVV", "step": 0.01},
     "AKEUSDT": {"label": "AKE", "step": 1.0},
     "INJUSDT": {"label": "INJ", "step": 0.1},
+    "BSVUSDT": {"label": "BSV", "step": 0.1},
+    "DOTUSDT": {"label": "DOT", "step": 0.1},
+    "DASHUSDT": {"label": "DASH", "step": 0.001},
+    "ETCUSDT": {"label": "ETC", "step": 0.01},
+    "THETAUSDT": {"label": "THETA", "step": 0.1},
+    "TRXUSDT": {"label": "TRX", "step": 1.0},
+    "XLMUSDT": {"label": "XLM", "step": 1.0},
+    "XTZUSDT": {"label": "XTZ", "step": 0.1},
 }
 
 # Always offered, then each strategy adds its live coins.

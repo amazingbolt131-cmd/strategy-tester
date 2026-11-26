@@ -688,7 +688,7 @@
 
   function startRankingPoll(jobId, total) {
     if (rankingTimer) { clearInterval(rankingTimer); rankingTimer = null; }
-    if (rankingCount) rankingCount.textContent = "0 / " + (total || 303);
+    if (rankingCount) rankingCount.textContent = "0 / " + (total || 472);
     rankingTimer = setInterval(function () { pollRanking(jobId); }, 1500);
     pollRanking(jobId);
   }
@@ -705,7 +705,7 @@
     if (d.status === "queued" || d.status === "running") {
       if (rankingProgressWrap) rankingProgressWrap.hidden = false;
       const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : 0;
-      if (rankingCount) rankingCount.textContent = (d.done || 0) + " / " + (d.total || 303) + " (" + pct + "%) · " + Number(d.elapsed_s || 0).toFixed(1) + "s";
+      if (rankingCount) rankingCount.textContent = (d.done || 0) + " / " + (d.total || 472) + " (" + pct + "%) · " + Number(d.elapsed_s || 0).toFixed(1) + "s";
       if (rankingStatusText) rankingStatusText.textContent = d.current || "Running…";
       if (rankingBar) rankingBar.style.width = pct + "%";
       if (d.job_id) startRankingPoll(d.job_id, d.total);
@@ -748,9 +748,9 @@
       if (rankingReportEl) { rankingReportEl.hidden = true; rankingReportEl.innerHTML = ""; }
       if (rankingError) { rankingError.hidden = true; rankingError.textContent = ""; }
       if (rankingBar) rankingBar.style.width = "0%";
-      if (rankingCount) rankingCount.textContent = "0 / 308";
+      if (rankingCount) rankingCount.textContent = "0 / 472";
       if (rankingStatusText) rankingStatusText.textContent = "Starting ranking…";
-      if (rankingMeta) rankingMeta.textContent = "Testing every enabled strategy on 38 Binance USDT-M symbols and the known Pivex crypto list. Each strategy stays on its own native timeframe. This runs in the background and can take a while the first time symbols are downloaded.";
+      if (rankingMeta) rankingMeta.textContent = "Testing every enabled strategy on 38 Binance USDT-M symbols and 24 Pivex crypto pairs. Each strategy stays on its own native timeframe. This runs in the background and can take a while the first time symbols are downloaded.";
       setBusy(true, "Ranking…");
       fetch("/ranking/start", {
         method: "POST",

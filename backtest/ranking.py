@@ -76,12 +76,14 @@ BINANCE_RANKING_SYMBOLS = [
     "FILUSDT",
 ]
 
-# Verified listed Pivex crypto coins. A separate login check may replace this
-# with the full board; until then do not invent additional Pivex listings.
-# ZEC and UNI remain unconfirmed.
+# Full 26-coin Pivex crypto list from the user's Pivex board screenshots:
+# 24 pairs have full 1-year Binance USDT-M futures data; EOS (delisted May 2025)
+# and XEM (futures settled Dec 2024, no spot) have no 1-year data.
 PIVEX_RANKING_NOTE = (
-    "Known listed Pivex crypto coins, pending a separate login check of the full board: "
-    "BTC, ETH, XRP, LTC, DOGE, SOL. ZEC and UNI remain unconfirmed."
+    "Full 26-coin Pivex crypto board: 24 coins tested on Binance USDT-M futures 1-year history "
+    "(ADA, AAVE, AVAX, BCH, BNB, BSV, BTC, DOGE, DOT, DASH, ETC, ETH, LINK, LTC, SOL, THETA, "
+    "TRX, UNI, VET, XLM, XMR, XRP, XTZ, ZEC). EOS (delisted May 2025) and XEM (settled Dec 2024) "
+    "have no 1-year data."
 )
 PIVEX_RANKING_SYMBOLS = [
     "BTCUSDT",
@@ -90,11 +92,29 @@ PIVEX_RANKING_SYMBOLS = [
     "LTCUSDT",
     "DOGEUSDT",
     "SOLUSDT",
+    "ADAUSDT",
+    "AAVEUSDT",
+    "AVAXUSDT",
+    "BCHUSDT",
+    "BNBUSDT",
+    "BSVUSDT",
+    "DOTUSDT",
+    "DASHUSDT",
+    "ETCUSDT",
+    "LINKUSDT",
+    "THETAUSDT",
+    "TRXUSDT",
+    "UNIUSDT",
+    "VETUSDT",
+    "XLMUSDT",
+    "XMRUSDT",
+    "XTZUSDT",
+    "ZECUSDT",
 ]
 
 MORNING_HAMA_TEST_TARGET = 1000.0
 MORNING_HAMA_TEST_NOTE = (
-    "SOL 1m Morning HAMA engine, native 1m, tested on every Ranking coin (6 known Pivex coins and "
+    "SOL 1m Morning HAMA engine, native 1m, tested on every Ranking coin (24 Pivex coins with 1-year data and "
     "38 Binance USDT-M perps). Official rules are unchanged: $40,000 notional, −$100 stop, $600 day bust, "
     "08:00 Kyiv day filter, no take-profit. The $0.06/unit entry spread is SOL-specific; on other symbols "
     "it is scaled to the same fraction of price as $0.06 / SOL 1m close on that bar, so SOL itself stays "
@@ -116,9 +136,9 @@ DEFAULT_RANKING_PATH = Path(__file__).resolve().parent.parent / "data" / "rankin
 DEFAULT_RANKING_LABEL = (
     "Precomputed default · 1-year window 2025-11-25 00:00 → 2026-11-25 00:00 UTC · "
     "includes the former 2026-07-01 to 2026-10-25 holdout · $10,000 start, 0.04%/side, 0 slip, daily HAMA on · "
-    "Other strategies from the local 303-combo run on 25 Nov 2026, 20:31–21:09 Europe/Kiev · "
-    "Morning HAMA rerun 25 Nov 2026, 21:33–21:41 Europe/Kiev on all 6 known Pivex coins and all 38 Binance USDT coins "
-    "(76 of 76 engine runs; tab rows use the +$1,000 target). 344 of 346 ranking combos completed."
+    "Pivex 26-coin board rerun 26 Nov 2026, 04:36–04:38 Europe/Kiev across all 24 coins with 1-year data "
+    "(168 of 168 Pivex combos; EOS and XEM have no data) + 38 Binance USDT coins "
+    "(tab Morning HAMA rows use the +$1,000 target). 470 of 472 ranking combos completed."
 )
 
 _DEFAULT_RANKING: dict | None = None
