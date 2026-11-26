@@ -328,7 +328,10 @@
   function poll(jobId) {
     if (inFlight) return;
     inFlight = true;
-    fetch("/strengths/" + encodeURIComponent(jobId))
+    const ctl = window.AbortController ? new AbortController() : null;
+    const killer = ctl ? setTimeout(function () { ctl.abort(); }, 25000) : null;
+    fetch("/strengths/" + encodeURIComponent(jobId), ctl ? { signal: ctl.signal, cache: "no-store" } : { cache: "no-store" })
+      .finally(function () { if (killer) clearTimeout(killer); })
       .then(function (resp) {
         return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }, function () {
           const e = new Error("Server busy (HTTP " + resp.status + ")"); e.transient = true; throw e;
