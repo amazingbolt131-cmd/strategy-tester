@@ -17,9 +17,11 @@ from backtest.config import (
     DEFAULT_COMMISSION_PCT,
     DEFAULT_DAILY_FILTER,
     DEFAULT_K,
+    DEFAULT_PERIOD,
     DEFAULT_SLIPPAGE_PCT,
+    PERIODS,
     STRATEGY_BY_ID,
-    STRATEGIES,
+    TESTER_STRATEGIES,
     SYMBOLS,
     VENUE_LABELS,
     VENUE_ORDER,
@@ -28,6 +30,7 @@ from backtest.config import (
     venue_enabled,
 )
 from backtest.ranking import annotate_suspect_rows, default_ranking_report, ranking_plan, run_ranking
+from backtest.data import period_window
 from backtest.runner import run_backtest
 from backtest.sweep import combo_plan, run_sweep
 
@@ -38,7 +41,10 @@ _SWEEP_LOCK = threading.Lock()
 _SWEEP_RUN_LOCK = threading.Lock()
 _SWEEP_JOBS: dict[str, dict] = {}
 _RANK_JOBS: dict[str, dict] = {}
+_RUN_JOBS: dict[str, dict] = {}
+_RUN_LOCK = threading.Lock()
 _MAX_JOBS = 5
+_MAX_RUN_JOBS = 3
 
 
 def _money(value: float, signed: bool = False) -> str:
@@ -89,10 +95,15 @@ def _metrics(stats: dict) -> list[dict]:
     ]
 
 
+def _period(value) -> str:
+    value = str(value or DEFAULT_PERIOD).strip().lower()
+    return value if value in PERIODS else DEFAULT_PERIOD
+
+
 def _form() -> dict:
-    strategy = request.form.get("strategy", STRATEGIES[0]["id"])
+    strategy = request.form.get("strategy", TESTER_STRATEGIES[0]["id"])
     if strategy not in STRATEGY_BY_ID:
-        strategy = STRATEGIES[0]["id"]
+        strategy = TESTER_STRATEGIES[0]["id"]
     venue = request.form.get("venue", "pivex")
     if venue not in VENUE_LABELS or not venue_enabled(STRATEGY_BY_ID[strategy], venue):
         venue = "pivex" if venue_enabled(STRATEGY_BY_ID[strategy], "pivex") else "binance"
@@ -112,6 +123,7 @@ def _form() -> dict:
         "commission": request.form.get("commission", str(DEFAULT_COMMISSION_PCT)) or str(DEFAULT_COMMISSION_PCT),
         "slippage": request.form.get("slippage", str(DEFAULT_SLIPPAGE_PCT)) or str(DEFAULT_SLIPPAGE_PCT),
         "daily_hama": daily,
+        "period": _period(request.form.get("period")),
     }
 
 
@@ -203,24 +215,37 @@ def index():
             balance = float(form["balance"])
             commission = float(form["commission"])
             slippage = float(form["slippage"])
-            result = run_backtest(
-                form["strategy"],
-                form["symbol"],
-                balance,
-                commission,
-                slippage,
-                venue=form["venue"],
-                k=DEFAULT_K,
-                daily_filter=bool(form["daily_hama"]),
-            )
+            result = _single_run(form, balance, commission, slippage)
             metrics = _metrics(result["stats"])
             LAST["result"] = result
         except Exception as exc:  # noqa: BLE001 - show the failure on the page
             error = str(exc)
             traceback.print_exc()
+    return _render(form, error, result, metrics)
+
+
+def _single_run(form: dict, balance: float, commission: float, slippage: float) -> dict:
+    result = run_backtest(
+        form["strategy"],
+        form["symbol"],
+        balance,
+        commission,
+        slippage,
+        window=period_window(form["period"]),
+        venue=form["venue"],
+        k=DEFAULT_K,
+        daily_filter=bool(form["daily_hama"]),
+    )
+    result["period"] = form["period"]
+    result["period_label"] = PERIODS[form["period"]]["label"]
+    return result
+
+
+def _render(form: dict, error, result, metrics):
     return render_template(
         "index.html",
-        strategies=STRATEGIES,
+        strategies=TESTER_STRATEGIES,
+        periods=PERIODS,
         symbols=SYMBOLS,
         symbol_choices=[(sid, SYMBOLS[sid]) for sid in symbols_for(form["strategy"], form["venue"])],
         venues=VENUE_ORDER,
@@ -231,6 +256,139 @@ def index():
         result=result,
         metrics=metrics,
     )
+
+
+def _trim_run_jobs() -> None:
+    while len(_RUN_JOBS) > _MAX_RUN_JOBS:
+        oldest = next(iter(_RUN_JOBS))
+        if _RUN_JOBS[oldest]["status"] in ("queued", "running"):
+            break
+        _RUN_JOBS.pop(oldest, None)
+
+
+@app.route("/run/start", methods=["POST"])
+def run_start():
+    """Single run as a background job, so a 1-year run does not hit a request timeout."""
+    form = _form()
+    spec = STRATEGY_BY_ID[form["strategy"]]
+    posted_venue = request.form.get("venue", "pivex")
+    if not venue_enabled(spec, posted_venue):
+        only = "Pivex" if venue_enabled(spec, "pivex") else "Binance"
+        return jsonify({"error": f"{spec['label']} runs on {only} only."}), 400
+    try:
+        balance = float(form["balance"])
+        commission = float(form["commission"])
+        slippage = float(form["slippage"])
+        if balance <= 0:
+            raise ValueError("Starting balance must be positive")
+        if commission < 0 or slippage < 0:
+            raise ValueError("Commission and slippage cannot be negative")
+    except (TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    job_id = uuid.uuid4().hex[:12]
+    label = f"{spec['label']} · {VENUE_LABELS[form['venue']]} · {form['symbol']} · {PERIODS[form['period']]['label']}"
+    with _SWEEP_LOCK:
+        _RUN_JOBS[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "label": label,
+            "form": form,
+            "started_at": time.monotonic(),
+            "elapsed_s": 0.0,
+            "error": None,
+            "result": None,
+        }
+        _trim_run_jobs()
+
+    def _worker() -> None:
+        with _RUN_LOCK:
+            with _SWEEP_LOCK:
+                job = _RUN_JOBS.get(job_id)
+                if not job:
+                    return
+                job["status"] = "running"
+                job["started_at"] = time.monotonic()
+            try:
+                result = _single_run(form, balance, commission, slippage)
+                with _SWEEP_LOCK:
+                    job = _RUN_JOBS.get(job_id)
+                    if job:
+                        job["result"] = result
+                        job["status"] = "done"
+                        job["elapsed_s"] = round(time.monotonic() - job["started_at"], 1)
+            except Exception as exc:  # noqa: BLE001
+                traceback.print_exc()
+                with _SWEEP_LOCK:
+                    job = _RUN_JOBS.get(job_id)
+                    if job:
+                        job["status"] = "error"
+                        job["error"] = str(exc)
+                        job["elapsed_s"] = round(time.monotonic() - job["started_at"], 1)
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return jsonify({"job_id": job_id, "label": label}), 202
+
+
+@app.route("/run/<job_id>")
+def run_status(job_id: str):
+    with _SWEEP_LOCK:
+        job = _RUN_JOBS.get(job_id)
+        if not job:
+            return jsonify({"error": "Run job not found. The server may have restarted; press Run again."}), 404
+        elapsed = job["elapsed_s"]
+        if job["status"] in ("queued", "running"):
+            elapsed = round(time.monotonic() - job["started_at"], 1)
+        payload = {
+            "job_id": job_id,
+            "status": job["status"],
+            "label": job["label"],
+            "elapsed_s": elapsed,
+            "error": job["error"],
+        }
+        result = job["result"]
+    if result is not None:
+        stats = result["stats"]
+        payload["summary"] = {
+            "strategy": result["strategy"],
+            "symbol": result["symbol"],
+            "venue": result["venue"],
+            "period": result.get("period"),
+            "window_label": result["window_label"],
+            "total_trades": stats["total_trades"],
+            "net_profit": stats["net_profit"],
+            "profit_factor": stats["profit_factor"],
+            "win_rate": stats["win_rate"],
+            "max_drawdown_pct": stats["max_drawdown_pct"],
+        }
+        payload["view_url"] = f"/run/{job_id}/view"
+    return jsonify(payload)
+
+
+@app.route("/run/<job_id>/view")
+def run_view(job_id: str):
+    with _SWEEP_LOCK:
+        job = _RUN_JOBS.get(job_id)
+        result = job["result"] if job else None
+        form = dict(job["form"]) if job else None
+        error = job["error"] if job else "Run job not found. The server may have restarted; press Run again."
+    if form is None:
+        form = {
+            "strategy": TESTER_STRATEGIES[0]["id"],
+            "venue": "pivex",
+            "symbol": "BTCUSDT",
+            "balance": str(int(DEFAULT_BALANCE)),
+            "commission": str(DEFAULT_COMMISSION_PCT),
+            "slippage": str(DEFAULT_SLIPPAGE_PCT),
+            "daily_hama": DEFAULT_DAILY_FILTER,
+            "period": DEFAULT_PERIOD,
+        }
+    metrics = None
+    if result is not None:
+        metrics = _metrics(result["stats"])
+        LAST["result"] = result
+    elif not error:
+        error = "This run has not finished yet."
+    return _render(form, error, result, metrics)
 
 
 @app.route("/export.csv")
@@ -255,6 +413,7 @@ def sweep_start():
         slippage = float(payload.get("slippage", DEFAULT_SLIPPAGE_PCT))
         raw_daily = payload.get("daily_hama", DEFAULT_DAILY_FILTER)
         daily_filter = raw_daily in (True, 1, "1", "true", "True")
+        period = _period(payload.get("period"))
         if balance <= 0:
             raise ValueError("Starting balance must be positive")
         if commission < 0 or slippage < 0:
@@ -320,6 +479,7 @@ def sweep_start():
                     commission=commission,
                     slippage=slippage,
                     daily_filter=daily_filter,
+                    period=period,
                     progress_cb=_progress,
                     cancel_check=_is_cancelled,
                 )

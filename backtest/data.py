@@ -23,7 +23,7 @@ from urllib.request import Request, urlopen
 
 import numpy as np
 
-from .config import WARMUP_DAYS
+from .config import DEFAULT_PERIOD, PERIODS, WARMUP_DAYS
 
 CACHE = Path(__file__).resolve().parent.parent / "data" / "cache"
 VISION = "https://data.binance.vision/data/futures/um/daily/klines"
@@ -78,6 +78,16 @@ def test_window(last_day: date | None = None) -> tuple[int, int, int]:
     end = datetime(last_day.year, last_day.month, last_day.day, tzinfo=timezone.utc) + timedelta(days=1)
     end_ms = int(end.timestamp() * 1000)
     start_ms = end_ms - 30 * 24 * 60 * 60 * 1000
+    warmup_ms = start_ms - WARMUP_DAYS * 24 * 60 * 60 * 1000
+    return warmup_ms, start_ms, end_ms
+
+
+def period_window(period: str = DEFAULT_PERIOD, last_day: date | None = None) -> tuple[int, int, int]:
+    """Warmup, start, end for a dropdown period. "1m" is exactly test_window()."""
+    if period not in PERIODS:
+        raise ValueError(f"Unknown period {period}")
+    _, _, end_ms = test_window(last_day)
+    start_ms = end_ms - int(PERIODS[period]["days"]) * 24 * 60 * 60 * 1000
     warmup_ms = start_ms - WARMUP_DAYS * 24 * 60 * 60 * 1000
     return warmup_ms, start_ms, end_ms
 

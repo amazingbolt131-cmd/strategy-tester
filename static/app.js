@@ -43,12 +43,54 @@
   const run = document.getElementById("run");
   const startBtn = document.getElementById("start-sweep");
   const rankBtn = document.getElementById("start-ranking");
+  const runStatus = document.getElementById("run-status");
+  function runBusy(busy) {
+    run.disabled = busy;
+    run.textContent = busy ? "Running…" : "Run";
+    if (startBtn) startBtn.disabled = busy;
+    if (typeof rankBtn !== "undefined" && rankBtn) rankBtn.disabled = busy;
+  }
+  function runMessage(text, isError) {
+    if (!runStatus) return;
+    runStatus.hidden = !text;
+    runStatus.textContent = text || "";
+    runStatus.classList.toggle("error", !!isError);
+  }
   if (run && run.form) {
-    run.form.addEventListener("submit", function () {
-      run.disabled = true;
-      run.textContent = "Running…";
-      if (startBtn) startBtn.disabled = true;
-      if (typeof rankBtn !== "undefined" && rankBtn) rankBtn.disabled = true;
+    // Runs go through a background job and polling, so a 1-year backtest is not
+    // cut off by the host's request timeout. Without fetch the form posts normally.
+    run.form.addEventListener("submit", function (event) {
+      if (!window.fetch || !window.FormData) { runBusy(true); return; }
+      event.preventDefault();
+      runBusy(true);
+      const body = new URLSearchParams(new FormData(run.form));
+      runMessage("Starting backtest…", false);
+      fetch("/run/start", { method: "POST", body: body })
+        .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+        .then(function (res) {
+          if (!res.ok) throw new Error(res.data.error || "Could not start the run");
+          const jobId = res.data.job_id;
+          const label = res.data.label || "Backtest";
+          function poll() {
+            fetch("/run/" + encodeURIComponent(jobId))
+              .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
+              .then(function (r) {
+                if (!r.ok) throw new Error(r.data.error || "Run failed");
+                const d = r.data;
+                if (d.status === "done") {
+                  runMessage("Done in " + d.elapsed_s + "s. Loading results…", false);
+                  window.location.href = d.view_url;
+                  return;
+                }
+                if (d.status === "error") throw new Error(d.error || "Run failed");
+                runMessage("Running " + label + " · " + d.elapsed_s + "s (the first long run downloads data and can take a few minutes)", false);
+                setTimeout(poll, 1500);
+              })
+              .catch(function (err) { runMessage(String(err.message || err), true); runBusy(false); });
+          }
+          poll();
+        })
+        .catch(function (err) { runMessage(String(err.message || err), true); runBusy(false); });
     });
   }
 
@@ -422,6 +464,7 @@
       if (!startBtn.form.reportValidity()) return;
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       const balanceEl = document.getElementById("balance");
+      const periodEl = document.getElementById("period");
       const commEl = document.getElementById("commission");
       const slipEl = document.getElementById("slippage");
       const dailyEl = document.getElementById("daily_hama");
@@ -439,7 +482,7 @@
       sweepBar.style.width = "0%";
       sweepCount.textContent = "0 / 70";
       sweepStatusText.textContent = "Starting full analysis…";
-      sweepMeta.textContent = "Running every enabled Pivex and Binance strategy/coin combo sequentially…";
+      sweepMeta.textContent = "Running every enabled Pivex and Binance strategy/coin combo sequentially over " + (periodEl ? periodEl.options[periodEl.selectedIndex].text : "1 month") + "…";
 
       startBtn.disabled = true;
       startBtn.textContent = "Analyzing…";
@@ -450,6 +493,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          period: periodEl ? periodEl.value : "1m",
           balance: balanceEl ? balanceEl.value : "10000",
           commission: commEl ? commEl.value : "0.04",
           slippage: slipEl ? slipEl.value : "0.0",

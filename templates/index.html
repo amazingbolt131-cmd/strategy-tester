@@ -12,7 +12,7 @@
       <span class="mark" aria-hidden="true"></span>
       <div>
         <h1>Futures Strategy Tester</h1>
-        <p>USDT-M perpetuals · Pivex and Binance risk cards · last 30 published days</p>
+        <p>USDT-M perpetuals · Pivex and Binance risk cards · 1, 3, 6 or 12 months up to the last published day</p>
       </div>
     </div>
   </header>
@@ -39,6 +39,14 @@
       <select name="symbol" id="symbol">
         {% for sid, meta in symbol_choices %}
         <option value="{{ sid }}" {% if form.symbol == sid %}selected{% endif %}>{{ meta.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Backtest period</span>
+      <select name="period" id="period">
+        {% for pid, meta in periods.items() %}
+        <option value="{{ pid }}" {% if form.period == pid %}selected{% endif %}>{{ meta.label }}</option>
         {% endfor %}
       </select>
     </label>
@@ -73,6 +81,7 @@
   {% if error %}
   <div class="banner error" role="alert">{{ error }}</div>
   {% endif %}
+  <div class="banner" id="run-status" role="status" hidden></div>
 
   <section class="panel sweep-panel" id="sweep-panel" hidden>
     <div class="panel-head">
@@ -128,7 +137,7 @@
     <div class="panel-head">
       <div>
         <h2>{{ result.strategy }} · {{ result.venue_label }} · {{ result.symbol_label }}</h2>
-        <p class="muted">{{ result.window_label }}{% if result.daily_filter %} · daily HAMA filter on{% endif %}</p>
+        <p class="muted">{% if result.period_label %}{{ result.period_label }} · {% endif %}{{ result.window_label }}{% if result.daily_filter %} · daily HAMA filter on{% endif %}</p>
         {% if result.note %}<p class="muted">{{ result.note }}</p>{% endif %}
       </div>
       <a class="export" id="export" href="/export.csv">Export CSV</a>
@@ -211,7 +220,7 @@
   </section>
   {% else %}
   <section class="panel empty-state" id="empty-state">
-    <h2>Run a month on one setup — or press Start or Rank</h2>
+    <h2>Run one setup over 1, 3, 6 or 12 months — or press Start or Rank</h2>
     <p>Pick a strategy and a symbol and press <strong>Run</strong> for a single chart + trade list, press <strong>Start</strong> to test every enabled Pivex and Binance strategy/coin combo, or press <strong>Rank</strong> to find the symbol where each strategy performed best.</p>
     <p class="muted">Partial take-profits close part of the position. Grid unloads close only the last level. The first download of a symbol takes a little while; the next run uses the cache.</p>
   </section>

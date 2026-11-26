@@ -80,6 +80,16 @@ DEFAULT_SLIPPAGE_PCT = 0.0
 WARMUP_DAYS = 40
 TEST_DAYS = 30
 
+# Backtest period dropdown. Every period ends at the close of the last published
+# UTC day; the start is that end minus the period.
+PERIODS = {
+    "1m": {"label": "1 month", "days": 30},
+    "3m": {"label": "3 months", "days": 91},
+    "6m": {"label": "6 months", "days": 182},
+    "1y": {"label": "1 year", "days": 365},
+}
+DEFAULT_PERIOD = "1m"
+
 # Pivex combined-6 size is unit × weight × k. The live app defaults to k = 8.
 DEFAULT_K = 8.0
 K_MIN = 0.25
@@ -266,7 +276,32 @@ STRATEGIES = [
     },
 ]
 
-STRATEGY_BY_ID = {s["id"]: s for s in STRATEGIES}
+# Strategies offered only on the Single run tab. They are not part of the Start
+# sweep or the Ranking board, so those plans and the precomputed ranking stay as they are.
+TESTER_EXTRA_STRATEGIES = [
+    {
+        "id": "combo_ht_5m",
+        "label": "HAMA 1h + Turtle 5m Combo",
+        "group": "combo",
+        "chart_tf": "5m",
+        "pivex": False,
+        "binance": True,
+        "risk": 10000.0,
+        "coins": {"pivex": [], "binance": []},
+        "rules": [
+            "Entry: official Reversal Turtle MTF 5m signal (30m session bias, 5m close beyond SMA 200 within 6% of the 20-bar extreme), filled at the next 5m open.",
+            "Trend filter: the last completed 1h HAMA Stable bar (CO 25 / CC 20, gap 0.3 × ATR(14), 4h colour lock) must be on the same side and agree with the 1h EMA 200. Nothing from an unfinished bar is used.",
+            "Stop: official Turtle stop, average entry ± atrd (about 23.3 × 5m ATR(14)), updated every 5m bar until breakeven.",
+            "At +3% half the position closes and the stop on the rest moves to breakeven. The rest targets +6%. No +3% add.",
+            "Exits are walked on 1m bars. If a stop and a target trade in the same minute, the stop fills first.",
+            "Fixed $10,000 book per trade, not compounded. Binance only.",
+        ],
+    },
+]
+
+TESTER_STRATEGIES = STRATEGIES + TESTER_EXTRA_STRATEGIES
+
+STRATEGY_BY_ID = {s["id"]: s for s in TESTER_STRATEGIES}
 
 
 def venue_enabled(strategy: dict, venue: str) -> bool:
@@ -338,7 +373,7 @@ def _venue_rule(cfg: dict) -> str | None:
 def catalog() -> dict:
     """What the symbol and venue dropdowns are allowed to show."""
     out = {}
-    for strategy in STRATEGIES:
+    for strategy in TESTER_STRATEGIES:
         venues = {}
         for venue in VENUE_ORDER:
             enabled = venue_enabled(strategy, venue)

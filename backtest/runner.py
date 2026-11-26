@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 
 import numpy as np
 
+from . import combo_ht
 from .config import SYMBOLS, resolve_strategy
-from .data import Bars, load_tf, test_window
+from .data import TF_MINUTES, Bars, load_tf, test_window
 from .engine import Book, Trade
 from .stats import summarize
 from .v31 import run_engine, settle
@@ -90,6 +91,20 @@ def _book_from_engine(raw: list[dict], balance: float, commission: float, slippa
     return book
 
 
+CHART_MAX_BARS = 20_000
+_CHART_STEPS = ("1m", "5m", "15m", "30m", "1h", "4h", "1d")
+
+
+def _chart_tf(native: str, start: int, end: int) -> str:
+    """The strategy's chart timeframe, or a coarser one so long periods stay light."""
+    span_min = max(1, (end - start) // 60_000)
+    idx = _CHART_STEPS.index(native) if native in _CHART_STEPS else 0
+    for tf in _CHART_STEPS[idx:]:
+        if span_min / TF_MINUTES[tf] <= CHART_MAX_BARS:
+            return tf
+    return _CHART_STEPS[-1]
+
+
 def run_backtest(
     strategy_id: str,
     symbol: str,
@@ -113,12 +128,15 @@ def run_backtest(
 
     cfg = resolve_strategy(strategy_id, venue)
     warmup, start, end = window or test_window()
-    engine = run_engine(
-        strategy_id, symbol, venue, warmup, start, end,
-        k=k, daily_filter=daily_filter,
-        profit_target=profit_target,
-        skip_missing_days=skip_missing_days,
-    )
+    if strategy_id == combo_ht.STRATEGY_ID:
+        engine = combo_ht.run_engine(symbol, warmup, start, end, skip_missing_days=skip_missing_days)
+    else:
+        engine = run_engine(
+            strategy_id, symbol, venue, warmup, start, end,
+            k=k, daily_filter=daily_filter,
+            profit_target=profit_target,
+            skip_missing_days=skip_missing_days,
+        )
     commission = float(commission_pct) / 100.0
     slippage = float(slippage_pct) / 100.0
     book = _book_from_engine(engine["trades"], float(balance), commission, slippage, start)
@@ -143,7 +161,7 @@ def run_backtest(
             "window_start": _iso(start),
             "window_end": _iso(end),
         }
-    chart_bars = load_tf(symbol, cfg["chart_tf"], start, end)
+    chart_bars = load_tf(symbol, _chart_tf(cfg["chart_tf"], start, end), start, end)
     chart = _slice(chart_bars, start, end)
     eq_t, eq_v = _downsample(book.equity_time, book.equity_value)
 

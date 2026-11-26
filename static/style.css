@@ -406,3 +406,10 @@ tr.suspect { background: rgba(255, 193, 7, 0.08); }
   text-transform: uppercase;
   font-weight: 700;
 }
+
+/* Single-run job progress (not an error unless .error is set). */
+#run-status:not(.error) {
+  background: rgba(41, 98, 255, 0.12);
+  color: #c8d3ff;
+  border-color: rgba(41, 98, 255, 0.4);
+}

@@ -8,6 +8,8 @@ from typing import Callable
 
 from .config import (
     DEFAULT_K,
+    DEFAULT_PERIOD,
+    PERIODS,
     STRATEGIES,
     STRATEGY_BY_ID,
     SYMBOLS,
@@ -17,7 +19,7 @@ from .config import (
     symbols_for,
     venue_enabled,
 )
-from .data import test_window
+from .data import period_window
 from .runner import run_backtest
 from .v31 import UNIT, WEIGHTS
 
@@ -856,12 +858,13 @@ def run_sweep(
     daily_filter: bool,
     progress_cb: Callable[[int, int, str], None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    period: str = DEFAULT_PERIOD,
 ) -> dict:
     """Execute all enabled venue/strategy/symbol combos sequentially and build the full report."""
     t0 = time.monotonic()
     canonical, exec_order = combo_plan()
     total = len(exec_order)
-    window = test_window()
+    window = period_window(period)
     window_label = ""
     results_by_idx: dict[int, dict] = {}
 
@@ -911,7 +914,7 @@ def run_sweep(
     elapsed_s = time.monotonic() - t0
     return build_report(
         ordered_rows,
-        window_label=window_label or "Last 30 published days",
+        window_label=window_label or f"Last {PERIODS[period]['label']}",
         balance=balance,
         commission=commission,
         slippage=slippage,

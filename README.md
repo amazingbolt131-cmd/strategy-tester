@@ -38,6 +38,14 @@ Start command:
 gunicorn -w 1 -t 600 -b 0.0.0.0:$PORT app:app
 ```
 
+## Backtest period
+
+The **Backtest period** dropdown picks 1 month, 3 months, 6 months or 1 year. Every period ends at the close of the last published UTC day on `data.binance.vision`; the start is that end minus 30, 91, 182 or 365 days, with 40 days of indicator warmup before it. 1 month is the old default window. Run and Start both use it; Ranking keeps its fixed 1-year board. Run is a background job (`POST /run/start`, poll `/run/<id>`, then `/run/<id>/view`) so a 1-year run is not cut off by a request timeout. Long charts switch to a coarser candle timeframe (at most 20,000 bars).
+
+## HAMA 1h + Turtle 5m Combo
+
+Binance only, Single run tab only (not in Start or Ranking). Entries are the official Reversal Turtle MTF 5m signals from `js/v31/combo.js`, kept only when the last completed 1h HAMA Stable bar (4h colour lock, 1h EMA 200 gate) is on the same side (`js/v31/combo_ht.js`). Exits are walked on 1m bars in `backtest/combo_ht.py`: official Turtle stop, half off at +3% then breakeven on the rest, rest to +6%, no add, stop first when a stop and a target share a minute. Fixed $10,000 book per trade.
+
 ## Venues
 
 Pivex is single-entry. A position gets one full-size fill, one stop and one target. Adds and extra grid levels are off. A partial close is still a close, not a new entry. Pivex combo size is `unit × weight × k`.
