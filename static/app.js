@@ -129,6 +129,7 @@
 
   const table = document.getElementById("trades");
   makeSortable(table);
+  window.stMakeSortable = makeSortable;
 
   const exportLink = document.getElementById("export");
   if (exportLink && table) {

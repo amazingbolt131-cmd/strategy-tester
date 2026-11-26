@@ -118,6 +118,7 @@ def run_backtest(
     include_chart: bool = True,
     profit_target: float | None = None,
     skip_missing_days: bool = False,
+    with_trades: bool = False,
 ) -> dict:
     if symbol not in SYMBOLS:
         raise ValueError(f"Unknown symbol {symbol}")
@@ -155,7 +156,16 @@ def run_backtest(
             "k": k,
             "daily_filter": daily_filter and venue == "pivex",
             "stats": stats,
-            "trades": [],
+            "trades": [
+                {
+                    "side": t.side,
+                    "entry_ms": t.entry_time,
+                    "exit_ms": t.exit_time,
+                    "pnl": t.pnl,
+                    "commission": t.commission,
+                }
+                for t in book.trades
+            ] if with_trades else [],
             "chart": None,
             "window_label": f"{_iso(start)} → {_iso(end)} UTC",
             "window_start": _iso(start),

@@ -413,3 +413,23 @@ tr.suspect { background: rgba(255, 193, 7, 0.08); }
   color: #c8d3ff;
   border-color: rgba(41, 98, 255, 0.4);
 }
+
+/* Strengths tab */
+.strengths-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 12px 0; }
+.strengths-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted, #9aa0ab); }
+.leaders { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; margin: 8px 0 16px; }
+.leader { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px; padding: 8px 10px; font-size: 12px; }
+.leader-label { display: block; font-weight: 600; margin-bottom: 4px; }
+.leader-row { margin: 2px 0; }
+.medal { display: inline-block; min-width: 24px; padding: 0 4px; border-radius: 3px; font-size: 11px; font-weight: 700; text-align: center; color: #111; }
+.medal.m1 { background: #f5c542; }
+.medal.m2 { background: #c9ced6; }
+.medal.m3 { background: #d39a63; }
+#strengths-table td, #strengths-table th { white-space: nowrap; }
+#strengths-table td:last-child { white-space: normal; min-width: 520px; font-size: 11px; line-height: 1.7; }
+.badge-inline { display: inline-block; margin-right: 6px; white-space: nowrap; }
+.strength-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; margin: 8px 0 16px; }
+.strength-card { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px; padding: 10px 12px; font-size: 13px; }
+.strength-card h4 { margin: 0 0 4px; font-size: 14px; }
+.strength-card ul { margin: 4px 0 8px; padding-left: 18px; }
+.strength-card .small { font-size: 11px; }

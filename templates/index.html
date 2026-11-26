@@ -76,6 +76,7 @@
   <nav class="tabs" role="tablist" aria-label="Tester views">
     <button type="button" class="tab active" id="tab-single" role="tab" aria-selected="true" aria-controls="single-pane">Single run</button>
     <button type="button" class="tab" id="tab-ranking" role="tab" aria-selected="false" aria-controls="ranking-panel">Ranking</button>
+    <button type="button" class="tab" id="tab-strengths" role="tab" aria-selected="false" aria-controls="strengths-panel">Strengths</button>
   </nav>
 
   {% if error %}
@@ -129,6 +130,49 @@
 
     <div class="banner error" id="ranking-error" role="alert" hidden></div>
     <div id="ranking-report" hidden></div>
+  </section>
+
+  <section class="panel strengths-panel" id="strengths-panel" hidden role="tabpanel" aria-labelledby="tab-strengths">
+    <div class="panel-head">
+      <div>
+        <h2>Strategy strengths</h2>
+        <p class="muted" id="strengths-meta">One run tests every strategy on both Pivex and Binance, on every timeframe it has, for the coin below and the Backtest period, balance, commission, slippage and daily HAMA filter set above. Each runs under its own venue's rules. They are then ranked together across about 20 categories so you can see what each one is good at.</p>
+      </div>
+      <div class="sweep-actions" id="strengths-actions" hidden>
+        <a class="export" id="strengths-csv" href="#">Download CSV</a>
+        <a class="export" id="strengths-json" href="#">Download JSON</a>
+      </div>
+    </div>
+    <div class="strengths-controls">
+      <label>
+        <span>Coin (used for every strategy that offers it)</span>
+        <select id="strengths-coin">
+          {% for coin in strength_coins %}
+          <option value="{{ coin.id }}" {% if form.symbol == coin.id %}selected{% endif %}>{{ coin.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="button" id="start-strengths" class="btn-start">Run strengths</button>
+      <label>
+        <span>Venue filter</span>
+        <select id="strengths-venue">
+          <option value="all">All venues</option>
+          <option value="pivex">Pivex only</option>
+          <option value="binance">Binance only</option>
+        </select>
+      </label>
+    </div>
+    <div class="progress-wrap" id="strengths-progress-wrap" hidden>
+      <div class="progress-head">
+        <span id="strengths-status-text">Preparing…</span>
+        <span id="strengths-count">0 / 0</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-bar" id="strengths-progress-bar" style="width: 0%"></div>
+      </div>
+    </div>
+    <div class="banner error" id="strengths-error" role="alert" hidden></div>
+    <div id="strengths-report" hidden></div>
   </section>
 
   <div id="single-pane" role="tabpanel" aria-labelledby="tab-single">
@@ -230,5 +274,6 @@
   <script id="catalog" type="application/json">{{ catalog|tojson }}</script>
   <script src="{{ url_for('static', filename='lightweight-charts.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='strengths.js') }}"></script>
 </body>
 </html>

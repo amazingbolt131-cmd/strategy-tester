@@ -32,6 +32,7 @@ from backtest.config import (
 from backtest.ranking import annotate_suspect_rows, default_ranking_report, ranking_plan, run_ranking
 from backtest.data import period_window
 from backtest.runner import run_backtest
+from backtest.strengths import coin_choices, run_strengths, strengths_plan, to_csv as strengths_csv
 from backtest.sweep import combo_plan, run_sweep
 
 app = Flask(__name__)
@@ -42,6 +43,7 @@ _SWEEP_RUN_LOCK = threading.Lock()
 _SWEEP_JOBS: dict[str, dict] = {}
 _RANK_JOBS: dict[str, dict] = {}
 _RUN_JOBS: dict[str, dict] = {}
+_STR_JOBS: dict[str, dict] = {}
 _RUN_LOCK = threading.Lock()
 _MAX_JOBS = 5
 _MAX_RUN_JOBS = 3
@@ -246,6 +248,7 @@ def _render(form: dict, error, result, metrics):
         "index.html",
         strategies=TESTER_STRATEGIES,
         periods=PERIODS,
+        strength_coins=coin_choices(),
         symbols=SYMBOLS,
         symbol_choices=[(sid, SYMBOLS[sid]) for sid in symbols_for(form["strategy"], form["venue"])],
         venues=VENUE_ORDER,
@@ -389,6 +392,141 @@ def run_view(job_id: str):
     elif not error:
         error = "This run has not finished yet."
     return _render(form, error, result, metrics)
+
+
+@app.route("/strengths/start", methods=["POST"])
+def strengths_start():
+    """One run over every strategy on Pivex and Binance for one coin and period."""
+    payload = request.get_json(silent=True) or request.form or {}
+    try:
+        symbol = str(payload.get("symbol", "BTCUSDT"))
+        if symbol not in {c["id"] for c in coin_choices()}:
+            raise ValueError(f"Unknown coin {symbol}")
+        period = _period(payload.get("period"))
+        balance = float(payload.get("balance", DEFAULT_BALANCE))
+        commission = float(payload.get("commission", DEFAULT_COMMISSION_PCT))
+        slippage = float(payload.get("slippage", DEFAULT_SLIPPAGE_PCT))
+        raw_daily = payload.get("daily_hama", DEFAULT_DAILY_FILTER)
+        daily_filter = raw_daily in (True, 1, "1", "true", "True")
+        if balance <= 0:
+            raise ValueError("Starting balance must be positive")
+        if commission < 0 or slippage < 0:
+            raise ValueError("Commission and slippage cannot be negative")
+    except (TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    rows, skipped = strengths_plan(symbol)
+    total = len(rows)
+    job_id = uuid.uuid4().hex[:12]
+    with _SWEEP_LOCK:
+        for existing in _STR_JOBS.values():
+            if existing["status"] in ("queued", "running"):
+                existing["cancelled"] = True
+        _STR_JOBS[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "done": 0,
+            "total": total,
+            "skipped": len(skipped),
+            "current": "Waiting for other heavy jobs…",
+            "started_at": time.monotonic(),
+            "elapsed_s": 0.0,
+            "error": None,
+            "report": None,
+            "cancelled": False,
+        }
+        while len(_STR_JOBS) > _MAX_JOBS:
+            oldest = next(iter(_STR_JOBS))
+            if oldest == job_id:
+                break
+            _STR_JOBS.pop(oldest, None)
+
+    def _worker() -> None:
+        with _SWEEP_RUN_LOCK:
+            with _SWEEP_LOCK:
+                job = _STR_JOBS.get(job_id)
+                if not job or job["cancelled"]:
+                    if job:
+                        job["status"] = "cancelled"
+                    return
+                job["status"] = "running"
+                job["started_at"] = time.monotonic()
+
+            def _progress(done: int, tot: int, label: str) -> None:
+                with _SWEEP_LOCK:
+                    j = _STR_JOBS.get(job_id)
+                    if j:
+                        j["done"] = done
+                        j["total"] = tot
+                        j["current"] = label
+
+            def _is_cancelled() -> bool:
+                with _SWEEP_LOCK:
+                    j = _STR_JOBS.get(job_id)
+                    return bool(not j or j["cancelled"])
+
+            try:
+                report = run_strengths(
+                    symbol, period, balance, commission, slippage, daily_filter,
+                    progress_cb=_progress, cancel_check=_is_cancelled,
+                )
+                with _SWEEP_LOCK:
+                    j = _STR_JOBS.get(job_id)
+                    if j:
+                        j.update(status="done", done=total, current="Complete", report=report,
+                                 elapsed_s=round(time.monotonic() - j["started_at"], 1))
+            except Exception as exc:  # noqa: BLE001
+                traceback.print_exc()
+                with _SWEEP_LOCK:
+                    j = _STR_JOBS.get(job_id)
+                    if j:
+                        j["status"] = "cancelled" if j["cancelled"] else "error"
+                        j["error"] = str(exc)
+                        j["elapsed_s"] = round(time.monotonic() - j["started_at"], 1)
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return jsonify({"job_id": job_id, "total": total, "skipped": len(skipped)}), 202
+
+
+@app.route("/strengths/<job_id>")
+def strengths_status(job_id: str):
+    with _SWEEP_LOCK:
+        job = _STR_JOBS.get(job_id)
+        if not job:
+            return jsonify({"error": "Strengths job not found. The server may have restarted; run it again."}), 404
+        elapsed = job["elapsed_s"]
+        if job["status"] in ("queued", "running"):
+            elapsed = round(time.monotonic() - job["started_at"], 1)
+        payload = {k: job[k] for k in ("job_id", "status", "done", "total", "skipped", "current", "error")}
+        payload["elapsed_s"] = elapsed
+        payload["report"] = job["report"] if job["status"] == "done" else None
+    return jsonify(payload)
+
+
+def _strengths_report(job_id: str):
+    with _SWEEP_LOCK:
+        job = _STR_JOBS.get(job_id)
+        return job["report"] if job and job["status"] == "done" else None
+
+
+@app.route("/strengths/<job_id>.csv")
+def strengths_csv_download(job_id: str):
+    report = _strengths_report(job_id)
+    if not report:
+        return Response("Report not ready.\n", status=404, mimetype="text/plain")
+    name = f"strengths-{report['symbol']}-{report['period']}.csv"
+    return Response(strengths_csv(report), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={name}"})
+
+
+@app.route("/strengths/<job_id>.json")
+def strengths_json_download(job_id: str):
+    report = _strengths_report(job_id)
+    if not report:
+        return Response("Report not ready.\n", status=404, mimetype="text/plain")
+    name = f"strengths-{report['symbol']}-{report['period']}.json"
+    resp = jsonify(report)
+    resp.headers["Content-Disposition"] = f"attachment; filename={name}"
+    return resp
 
 
 @app.route("/export.csv")
