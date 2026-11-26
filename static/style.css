@@ -443,3 +443,4 @@ tr.suspect { background: rgba(255, 193, 7, 0.08); }
 #strengths-agg-table td, #strengths-agg-table th { white-space: nowrap; }
 #strengths-agg-table td:last-child { white-space: normal; min-width: 520px; font-size: 11px; line-height: 1.7; }
 #strengths-agg-table td:nth-last-child(2) { font-size: 11px; }
+#strengths-actions[hidden] { display: none; }
