@@ -30,6 +30,7 @@ from backtest.config import (
     venue_enabled,
 )
 from backtest.ranking import annotate_suspect_rows, default_ranking_report, ranking_plan, run_ranking
+from backtest import research_strats
 from backtest.data import period_window
 from backtest.runner import run_backtest
 from backtest.strengths import (
@@ -247,6 +248,7 @@ def _single_run(form: dict, balance: float, commission: float, slippage: float) 
         venue=form["venue"],
         k=DEFAULT_K,
         daily_filter=bool(form["daily_hama"]),
+        period=form["period"],
     )
     result["period"] = form["period"]
     result["period_label"] = PERIODS[form["period"]]["label"]
@@ -866,6 +868,21 @@ def ranking_status(job_id: str):
 @app.route("/ranking/latest")
 def ranking_latest():
     """Latest finished ranking, or a running job's progress, else the bundled default."""
+    period = (request.args.get("period") or "1y").strip().lower()
+    if period == "3y":
+        report = research_strats.research_ranking_report("3y")
+        return jsonify({
+            "source": "precomputed",
+            "job_id": None,
+            "status": "done",
+            "done": report.get("summary", {}).get("total_combos"),
+            "total": report.get("summary", {}).get("total_combos"),
+            "current": "Precomputed 3-year research strategies",
+            "elapsed_s": 0,
+            "error": None,
+            "report": report,
+            "period": "3y",
+        })
     with _SWEEP_LOCK:
         jobs = list(_RANK_JOBS.values())
     running = [job for job in jobs if job["status"] in ("queued", "running")]
@@ -891,6 +908,7 @@ def ranking_latest():
         report = annotate_suspect_rows(job["report"])
         report.setdefault("source", "job")
         report.setdefault("source_label", "Latest finished Rank job on this server")
+        report = research_strats.merge_into_ranking(report, "1y")
         return jsonify({
             "source": "job",
             "job_id": job["job_id"],

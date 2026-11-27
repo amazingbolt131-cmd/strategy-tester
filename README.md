@@ -40,7 +40,7 @@ gunicorn -w 1 -t 600 -b 0.0.0.0:$PORT app:app
 
 ## Backtest period
 
-The **Backtest period** dropdown picks 1 month, 3 months, 6 months or 1 year. Every period ends at the close of the last published UTC day on `data.binance.vision`; the start is that end minus 30, 91, 182 or 365 days, with 40 days of indicator warmup before it. 1 month is the old default window. Run and Start both use it; Ranking keeps its fixed 1-year board. Run is a background job (`POST /run/start`, poll `/run/<id>`, then `/run/<id>/view`) so a 1-year run is not cut off by a request timeout. Long charts switch to a coarser candle timeframe (at most 20,000 bars).
+The **Backtest period** dropdown picks 1 month, 3 months, 6 months, 1 year or 3 years. 1–12 month periods end at the close of the last published UTC day on `data.binance.vision`; the start is that end minus 30, 91, 182 or 365 days, with 40 days of indicator warmup before it. 3 years starts on 2023-12-01 and ends at the last published day. 1 month is the old default window. Run and Start both use it; Ranking keeps its fixed 1-year board. Run is a background job (`POST /run/start`, poll `/run/<id>`, then `/run/<id>/view`) so a 1-year run is not cut off by a request timeout. Long charts switch to a coarser candle timeframe (at most 20,000 bars).
 
 ## HAMA 1h + Turtle 5m Combo
 
@@ -70,6 +70,8 @@ DG, ER and both HAMA Grid+Count strategies are Binance-only. Every other strateg
 | HAMA Grid+Count 5m and 1m | Binance only. $1,000 a level, colour-count filter. |
 
 BTC, ETH and SOL are always in the symbol list. Each strategy also lists its live coins.
+
+Three research strategies (HAMA Scale-in Ladder, 1h Alpha Wave Scalper + HAMA, DG Grid + flow) are precomputed on BTC, ETH, SOL, BNB and XRP for 1 year (2025-11-27 → 2026-11-27) and 3 years (2023-12-01 → now). They appear in the strategy list and the Ranking tab (switch the Ranking period to 3 years). P&L % is the sum of per-trade % of a $100 unit; fees of 0.04%/side are already in the nets.
 
 ## Layout
 

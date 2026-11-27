@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from . import combo_ht
+from . import research_strats
 from .config import SYMBOLS, resolve_strategy
 from .data import TF_MINUTES, Bars, load_tf, test_window
 from .engine import Book, Trade
@@ -119,6 +120,7 @@ def run_backtest(
     profit_target: float | None = None,
     skip_missing_days: bool = False,
     with_trades: bool = False,
+    period: str | None = None,
 ) -> dict:
     if symbol not in SYMBOLS:
         raise ValueError(f"Unknown symbol {symbol}")
@@ -129,6 +131,21 @@ def run_backtest(
 
     cfg = resolve_strategy(strategy_id, venue)
     warmup, start, end = window or test_window()
+    if research_strats.is_research(strategy_id):
+        per = period
+        if not per:
+            start_ms = (window or (0, 0, 0))[1]
+            end_ms = (window or (0, 0, 0))[2]
+            if start_ms and start_ms <= 1_701_388_800_000 + 2 * 86_400_000:
+                per = "3y"
+            elif end_ms and (end_ms - start_ms) >= 300 * 86_400_000:
+                per = "1y"
+            else:
+                per = "1y" if not start_ms else None
+        return research_strats.run_precomputed(
+            strategy_id, symbol, per or "1y", float(balance),
+            include_chart=include_chart, with_trades=with_trades,
+        )
     if strategy_id == combo_ht.STRATEGY_ID:
         engine = combo_ht.run_engine(symbol, warmup, start, end, skip_missing_days=skip_missing_days)
     else:

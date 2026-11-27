@@ -42,7 +42,7 @@ DAY_MS = 86_400_000
 MIN_TRADES = 3
 PIVEX_DD_LIMIT = 600.0
 PIVEX_TARGET = 1000.0
-HEAVY_1M = {"s5_15m", "dg_grid", "er_grid", "hama_grid_5m", "hama_grid_1m", "sol1m_morning", "combo_ht_5m"}
+HEAVY_1M = {"s5_15m", "dg_grid", "er_grid", "hama_grid_5m", "hama_grid_1m", "sol1m_morning", "combo_ht_5m", "hama_ladder_1m", "aw_scalper_1h", "dg_grid_flow"}
 
 TIMEFRAMES = {
     "micro_1h": "1h",
@@ -545,7 +545,7 @@ def run_strengths(
         if out.get("error"):
             row["metrics"] = None
             msg = out["error"]
-            if row["strategy_id"] in HEAVY_1M and period in ("6m", "1y") and "memory" not in msg:
+            if row["strategy_id"] in HEAVY_1M and period in ("6m", "1y", "3y") and "memory" not in msg:
                 msg += " · This strategy reads 1m candles; a 6- or 12-month run can exceed the free server's memory or time. Try a shorter period."
             row["error"] = msg[:800]
         else:

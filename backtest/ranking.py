@@ -22,6 +22,7 @@ from .config import (
 )
 from .data import RANKING_WINDOW_LABEL, ranking_window
 from .runner import run_backtest
+from . import research_strats
 from .sweep import STRATEGY_SPECS
 
 # Frozen 2026-11-25 snapshot: 38 most liquid Binance USDT-M *crypto* perps
@@ -209,6 +210,7 @@ def default_ranking_report() -> dict:
         report["source"] = "precomputed"
         report["source_label"] = DEFAULT_RANKING_LABEL
         annotate_suspect_rows(report)
+        report = research_strats.merge_into_ranking(report, "1y")
         _DEFAULT_RANKING = report
     return _DEFAULT_RANKING
 

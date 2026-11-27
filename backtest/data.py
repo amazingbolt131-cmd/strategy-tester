@@ -87,7 +87,12 @@ def period_window(period: str = DEFAULT_PERIOD, last_day: date | None = None) ->
     if period not in PERIODS:
         raise ValueError(f"Unknown period {period}")
     _, _, end_ms = test_window(last_day)
-    start_ms = end_ms - int(PERIODS[period]["days"]) * 24 * 60 * 60 * 1000
+    meta = PERIODS[period]
+    if meta.get("start"):
+        start = datetime.strptime(meta["start"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        start_ms = int(start.timestamp() * 1000)
+    else:
+        start_ms = end_ms - int(meta["days"]) * 24 * 60 * 60 * 1000
     warmup_ms = start_ms - WARMUP_DAYS * 24 * 60 * 60 * 1000
     return warmup_ms, start_ms, end_ms
 

@@ -683,6 +683,21 @@
       html += "</tbody></table></div></details>";
     }
 
+    const researchMonths = (report.ranked || []).filter(function (r) { return r.research && r.months && r.months.length; });
+    if (researchMonths.length) {
+      html += "<h3>Monthly breakdown (Europe/Kiev)</h3>";
+      researchMonths.forEach(function (r) {
+        html += "<p class=\"muted\">" + esc(r.strategy_label) + " · " + esc(r.symbol_label) + "</p>";
+        html += "<div class=\"table-wrap\"><table><thead><tr><th>Month</th><th>Total %</th><th>Trades</th><th>Profit</th></tr></thead><tbody>";
+        r.months.forEach(function (m) {
+          const cls = m.pnl > 0 ? "pos" : (m.pnl < 0 ? "neg" : "");
+          html += "<tr><td>" + esc(m.month) + "</td><td class=\"" + cls + "\">" +
+            (m.pnl >= 0 ? "+" : "") + Number(m.pnl).toFixed(1) + "%</td><td>" + m.trades +
+            "</td><td class=\"" + (m.profit ? "pos" : "neg") + "\">" + (m.profit ? "Yes" : "No") + "</td></tr>";
+        });
+        html += "</tbody></table></div>";
+      });
+    }
     rankingReportEl.innerHTML = html;
     rankingReportEl.hidden = false;
     makeSortable(document.getElementById("ranking-table"));
@@ -762,11 +777,15 @@
       latestLoaded = true;
     }
   }
-  function loadLatestRanking() {
+  function rankingPeriod() {
+    const el = document.getElementById("ranking-period");
+    return el && el.value ? el.value : "1y";
+  }
+  function loadLatestRanking(force) {
     if (rankingTimer) return;
-    if (latestLoaded && rankingReportEl && !rankingReportEl.hidden) return;
+    if (!force && latestLoaded && rankingReportEl && !rankingReportEl.hidden) return;
     showLoading();
-    fetch("/ranking/latest")
+    fetch("/ranking/latest?period=" + encodeURIComponent(rankingPeriod()))
       .then(function (resp) { return resp.json().then(function (d) { return { ok: resp.ok, data: d }; }); })
       .then(function (res) {
         if (!res.ok) throw new Error((res.data && res.data.error) || "Failed to load ranking");
@@ -820,6 +839,15 @@
             rankingError.hidden = false;
           }
         });
+    });
+  }
+
+  const rankingPeriodEl = document.getElementById("ranking-period");
+  if (rankingPeriodEl) {
+    rankingPeriodEl.addEventListener("change", function () {
+      latestLoaded = false;
+      if (rankingReportEl) { rankingReportEl.hidden = true; rankingReportEl.innerHTML = ""; }
+      loadLatestRanking(true);
     });
   }
 

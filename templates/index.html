@@ -12,7 +12,7 @@
       <span class="mark" aria-hidden="true"></span>
       <div>
         <h1>Futures Strategy Tester</h1>
-        <p>USDT-M perpetuals · Pivex and Binance risk cards · 1, 3, 6 or 12 months up to the last published day</p>
+        <p>USDT-M perpetuals · Pivex and Binance risk cards · 1, 3, 6 or 12 months, or 3 years</p>
       </div>
     </div>
   </header>
@@ -114,8 +114,15 @@
     <div class="panel-head">
       <div>
         <h2>Strategy ranking</h2>
-        <p class="muted" id="ranking-meta">Opening this tab loads the precomputed 1-year ranking (2025-11-25 00:00 to 2026-11-25 00:00 UTC, including the former 2026-07-01 to 2026-10-25 holdout). Press Rank only if you want a fresh run — a live 1-year Rank on the free plan may take too long. Each strategy uses its own native timeframe; the table shows the symbol where that strategy performed best.</p>
+        <p class="muted" id="ranking-meta">Opening this tab loads the precomputed 1-year ranking. Use the period menu to switch to 3 years (the three research strategies on BTC ETH SOL BNB XRP). Press Rank only if you want a fresh v3.1 run — a live 1-year Rank on the free plan may take too long.</p>
       </div>
+      <label>
+        <span>Period</span>
+        <select id="ranking-period">
+          <option value="1y" selected>1 year</option>
+          <option value="3y">3 years</option>
+        </select>
+      </label>
     </div>
 
     <div class="progress-wrap" id="ranking-progress-wrap" hidden>
@@ -208,6 +215,24 @@
       </div>
       {% endfor %}
     </div>
+    {% if result.months %}
+    <h3>Monthly breakdown (Europe/Kiev)</h3>
+    <div class="table-wrap">
+      <table id="monthly">
+        <thead><tr><th>Month</th><th>Total %</th><th>Trades</th><th>Profit</th></tr></thead>
+        <tbody>
+          {% for row in result.months %}
+          <tr>
+            <td>{{ row.month }}</td>
+            <td class="{{ 'pos' if row.pnl > 0 else 'neg' if row.pnl < 0 else '' }}">{{ '%+.1f'|format(row.pnl) }}%</td>
+            <td>{{ row.trades }}</td>
+            <td class="{{ 'pos' if row.profit else 'neg' }}">{{ 'Yes' if row.profit else 'No' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
 
     <details class="rules">
       <summary>Rules used for this run</summary>
@@ -276,7 +301,7 @@
   </section>
   {% else %}
   <section class="panel empty-state" id="empty-state">
-    <h2>Run one setup over 1, 3, 6 or 12 months — or press Start or Rank</h2>
+    <h2>Run one setup over 1, 3, 6 or 12 months, or 3 years — or press Start or Rank</h2>
     <p>Pick a strategy and a symbol and press <strong>Run</strong> for a single chart + trade list, press <strong>Start</strong> to test every enabled Pivex and Binance strategy/coin combo, or press <strong>Rank</strong> to find the symbol where each strategy performed best.</p>
     <p class="muted">Partial take-profits close part of the position. Grid unloads close only the last level. The first download of a symbol takes a little while; the next run uses the cache.</p>
   </section>

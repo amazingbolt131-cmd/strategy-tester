@@ -87,6 +87,7 @@ PERIODS = {
     "3m": {"label": "3 months", "days": 91},
     "6m": {"label": "6 months", "days": 182},
     "1y": {"label": "1 year", "days": 365},
+    "3y": {"label": "3 years", "start": "2023-12-01"},
 }
 DEFAULT_PERIOD = "1m"
 
@@ -295,6 +296,55 @@ TESTER_EXTRA_STRATEGIES = [
             "At +3% half the position closes and the stop on the rest moves to breakeven. The rest targets +6%. No +3% add.",
             "Exits are walked on 1m bars. If a stop and a target trade in the same minute, the stop fills first.",
             "Fixed $10,000 book per trade, not compounded. Binance only.",
+        ],
+    },
+    {
+        "id": "hama_ladder_1m",
+        "label": "HAMA Scale-in Ladder",
+        "group": "research",
+        "chart_tf": "1m",
+        "pivex": False,
+        "binance": True,
+        "risk": 100.0,
+        "coins": {"pivex": [], "binance": ["BNBUSDT", "XRPUSDT"]},
+        "rules": [
+            "1m stable-HAMA flip, no higher-timeframe bias.",
+            "Add on every 2nd 1m flip during the opposing 15m HAMA run.",
+            "Geometric sizing 1, 2, 4, …, 128 over a maximum of 8 units (weights normalised to a $100 basket).",
+            "5% basket stop. Fees 0.04%/side already deducted.",
+            "Precomputed for 1 year (2025-11-27 → 2026-11-27) and 3 years (2023-12-01 → now) on BTC, ETH, SOL, BNB and XRP. P&L % is the sum of per-trade % of a $100 unit (1% = $1), not the return on the starting-balance field.",
+        ],
+    },
+    {
+        "id": "aw_scalper_1h",
+        "label": "1h Alpha Wave Scalper + HAMA",
+        "group": "research",
+        "chart_tf": "1h",
+        "pivex": False,
+        "binance": True,
+        "risk": 100.0,
+        "coins": {"pivex": [], "binance": ["BNBUSDT", "XRPUSDT"]},
+        "rules": [
+            "1h Alpha Wave Scalper entries only when 1h HAMA Stable agrees.",
+            "Exit: Inversed Channel at ATR(22) × 3. Fill at the 1h close.",
+            "Fees 0.04%/side already deducted. $100 unit.",
+            "Precomputed for 1 year and 3 years on BTC, ETH, SOL, BNB and XRP. P&L % is the sum of per-trade % of a $100 unit (1% = $1).",
+        ],
+    },
+    {
+        "id": "dg_grid_flow",
+        "label": "DG Grid + flow",
+        "group": "research",
+        "chart_tf": "15m",
+        "pivex": False,
+        "binance": True,
+        "risk": 100.0,
+        "coins": {"pivex": [], "binance": ["BNBUSDT", "XRPUSDT"]},
+        "rules": [
+            "15m entry: 5 consecutive opposite raw HAMA candles plus taker-flow agreement.",
+            "Grid adds every +0.5%, closes a unit on a 1% pullback, maximum 8 units (mode C).",
+            "Full period, no last-third cut. Fees 0.04%/side already deducted.",
+            "Precomputed for 1 year and 3 years on BTC, ETH, SOL, BNB and XRP. P&L % is the sum of per-trade % of a $100 unit (1% = $1).",
         ],
     },
 ]
